@@ -141,6 +141,10 @@ export default function Sidebar({ activeName }) {
           <span className="material-symbols-outlined text-xl text-rose-400">logout</span>
           <span>Cerrar Sesión</span>
         </button>
+
+        <p className="text-center text-[9px] text-slate-300 font-medium pt-1 tracking-wide">
+          v1.3 · Teachers Fix · 27 May 2026
+        </p>
       </div>
     </aside>
   );
