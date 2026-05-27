@@ -380,7 +380,7 @@ export default function TeachersDashboard() {
   };
 
   const handleDelete = async () => {
-    if (deleteConfirm !== deleteModal.name) return;
+    if (deleteConfirm.trim() !== deleteModal.name.trim()) return;
     try {
       const { error } = await supabase.from("teachers").delete().eq("id", deleteModal.id);
       if (error) throw error;
@@ -1138,7 +1138,7 @@ export default function TeachersDashboard() {
                 <button
                   type="button"
                   onClick={handleDelete}
-                  disabled={deleteConfirm !== deleteModal.name}
+                  disabled={deleteConfirm.trim() !== deleteModal.name.trim()}
                   className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-bold text-sm active:scale-95 transition-all duration-150 shadow-lg shadow-rose-600/20 disabled:opacity-40 disabled:cursor-not-allowed"
                 >Eliminar</button>
               </div>
