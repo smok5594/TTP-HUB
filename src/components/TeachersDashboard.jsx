@@ -25,100 +25,62 @@ const emptyForm = {
 
 export default function TeachersDashboard() {
   const [teachers, setTeachers] = useState([]);
-  const [isLoaded, setIsLoaded] = useState(false);
   const [search, setSearch] = useState("");
 
-  // Cargar profesores desde Supabase
   const fetchTeachers = async () => {
     try {
-      const { data, error } = await supabase.from("teachers").select("*");
+      const { data: teachersData, error } = await supabase.from("teachers").select("*");
       if (error) throw error;
-      if (data && data.length > 0) {
-        const mapped = data.map(t => ({
-          id: t.id,
-          name: t.name,
-          email: t.email || `${t.name.toLowerCase().replace(/\s/g, "")}@ttp.mx`,
-          phone: t.phone || "+52 55 0000 0000",
-          specialty: t.specialty || "Profesor de Inglés",
-          rate: t.rate || 250,
-          since: t.since || "Enero 2024",
-          birthdate: t.birthdate || "",
-          burlington_user: t.burlington_user || "",
-          burlington_pass: t.burlington_pass || "",
-          ttp_user: t.ttp_user || "",
-          ttp_pass: t.ttp_pass || "",
-          classes: t.classes || 0,
-          students: t.students || 0,
-          status: t.status === "active" ? "activo" : "suspendido"
-        }));
-        setTeachers(mapped);
-        localStorage.setItem("ttp_teachers_local", JSON.stringify(mapped));
-      }
+      if (!teachersData || teachersData.length === 0) return;
+      const { data: classesData } = await supabase.from("classes").select("teacher_id");
+      const { data: studentsData } = await supabase.from("students").select("teacher");
+      const mapped = teachersData.map(t => ({
+        id: t.id,
+        name: t.name,
+        email: t.email || `${t.name.toLowerCase().replace(/\s/g, "")}@ttp.mx`,
+        phone: t.phone || "+52 55 0000 0000",
+        specialty: t.specialty || "Profesor de Inglés",
+        rate: t.rate || 250,
+        since: t.since || "",
+        birthdate: t.birthdate || "",
+        burlington_user: t.burlington_user || "",
+        burlington_pass: t.burlington_pass || "",
+        ttp_user: t.ttp_user || "",
+        ttp_pass: t.ttp_pass || "",
+        classes: classesData?.filter(c => c.teacher_id === t.id).length || 0,
+        students: studentsData?.filter(s => s.teacher === t.name).length || 0,
+        status: t.status === "active" ? "activo" : "suspendido"
+      }));
+      setTeachers(mapped);
     } catch (err) {
-      console.log("Consulta de profesores de Supabase fallida. Usando localStorage.");
+      console.error("Error cargando profesores:", err);
     }
   };
 
-  // Cargar de localStorage en montaje y sincronizar con Supabase
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("ttp_teachers_local");
-      if (stored) {
-        try {
-          setTeachers(JSON.parse(stored));
-        } catch (e) {}
-      } else {
-        const seed = [
-          { id: "t-1", name: "Lic. Elena Valdéz", email: "elena.valdez@ttp.mx", phone: "+52 55 1234 5678", specialty: "English Mastery B2", rate: 250, since: "2024-01-15", birthdate: "1990-05-14", status: "activo", classes: 12, students: 14 },
-          { id: "t-2", name: "Prof. James Wilson", email: "james.wilson@ttp.mx", phone: "+52 55 2345 6789", specialty: "Business English", rate: 300, since: "2023-09-01", birthdate: "1988-10-22", status: "activo", classes: 8, students: 10 },
-          { id: "t-3", name: "Dra. Sarah Parker", email: "sarah.parker@ttp.mx", phone: "+52 55 3456 7890", specialty: "Conversation Club", rate: 280, since: "2024-02-10", birthdate: "1992-03-05", status: "activo", classes: 15, students: 20 }
-        ];
-        setTeachers(seed);
-        localStorage.setItem("ttp_teachers_local", JSON.stringify(seed));
-      }
-
-      const storedAvail = localStorage.getItem("ttp_teachers_availability");
-      if (storedAvail) {
-        try {
-          const parsed = JSON.parse(storedAvail);
-          if (Array.isArray(parsed)) {
-            setAvailabilityBlocks(parsed);
-          } else {
-            throw new Error("Old cache format detected");
-          }
-        } catch (e) {
-          const seedAvail = [
-            { id: "ab-1", teacherId: "t-1", day: "Lunes", type: "clase_asignada", startTime: "09:00", endTime: "11:00", description: "English Mastery B2" },
-            { id: "ab-2", teacherId: "t-1", day: "Martes", type: "no_disponible", startTime: "13:00", endTime: "14:00", description: "Hora de almuerzo" },
-            { id: "ab-3", teacherId: "t-1", day: "Miércoles", type: "disponible", startTime: "08:00", endTime: "10:00", description: "Horario Libre" },
-            { id: "ab-4", teacherId: "t-1", day: "Jueves", type: "clase_asignada", startTime: "15:00", endTime: "17:00", description: "Speaking Practice" },
-            { id: "ab-5", teacherId: "t-1", day: "Viernes", type: "dia_descanso", startTime: "07:00", endTime: "22:00", description: "Día de descanso semanal" },
-            
-            { id: "ab-6", teacherId: "t-2", day: "Lunes", type: "clase_asignada", startTime: "10:00", endTime: "12:00", description: "Business Fundamentals" },
-            { id: "ab-7", teacherId: "t-2", day: "Miércoles", type: "no_disponible", startTime: "12:00", endTime: "13:00", description: "Comida corporativa" },
-            { id: "ab-8", teacherId: "t-2", day: "Viernes", type: "disponible", startTime: "09:00", endTime: "11:00", description: "Asesorías individuales" },
-            { id: "ab-9", teacherId: "t-2", day: "Domingo", type: "dia_descanso", startTime: "07:00", endTime: "22:00", description: "Descanso de fin de semana" },
-            
-            { id: "ab-10", teacherId: "t-3", day: "Martes", type: "clase_asignada", startTime: "10:00", endTime: "12:00", description: "Conversation Club Adv" },
-            { id: "ab-11", teacherId: "t-3", day: "Jueves", type: "disponible", startTime: "11:00", endTime: "13:00", description: "Espacio para clases privadas" },
-            { id: "ab-12", teacherId: "t-3", day: "Sábado", type: "clase_asignada", startTime: "09:00", endTime: "13:00", description: "Weekend Bootcamp" },
-            { id: "ab-13", teacherId: "t-3", day: "Domingo", type: "dia_descanso", startTime: "07:00", endTime: "22:00", description: "Descanso de fin de semana" }
-          ];
-          setAvailabilityBlocks(seedAvail);
-          localStorage.setItem("ttp_teachers_availability", JSON.stringify(seedAvail));
-        }
-      }
-      setIsLoaded(true);
-      fetchTeachers();
+  const fetchAvailability = async () => {
+    try {
+      const { data, error } = await supabase.from("teacher_availability").select("*");
+      if (error) throw error;
+      if (!data) return;
+      setAvailabilityBlocks(data.map(b => ({
+        id: b.id,
+        teacherId: b.teacher_id,
+        day: b.day,
+        type: b.type,
+        startTime: b.start_time,
+        endTime: b.end_time,
+        description: b.description || ""
+      })));
+    } catch (err) {
+      console.error("Error cargando disponibilidad:", err);
     }
+  };
+
+  useEffect(() => {
+    fetchTeachers();
+    fetchAvailability();
   }, []);
 
-  // Guardar en localStorage ante cambios
-  useEffect(() => {
-    if (isLoaded && typeof window !== "undefined") {
-      localStorage.setItem("ttp_teachers_local", JSON.stringify(teachers));
-    }
-  }, [teachers, isLoaded]);
 
   // Sub-tabs y disponibilidad
   const [activeSubTab, setActiveSubTab] = useState("lista");
@@ -126,16 +88,12 @@ export default function TeachersDashboard() {
   const [availabilityBlocks, setAvailabilityBlocks] = useState([]);
   const [classesList, setClassesList] = useState([]);
 
-  // Cargar clases asignadas para vinculación automática
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedClasses = localStorage.getItem("ttp_schedules_local");
-      if (storedClasses) {
-        try {
-          setClassesList(JSON.parse(storedClasses));
-        } catch (e) {}
-      }
-    }
+    const loadClasses = async () => {
+      const { data } = await supabase.from("classes").select("id, title, teacher_id");
+      if (data) setClassesList(data);
+    };
+    loadClasses();
   }, [activeSubTab]);
 
   // Modales
@@ -146,11 +104,6 @@ export default function TeachersDashboard() {
   const [formData, setFormData] = useState(emptyForm);
   const [deleteConfirm, setDeleteConfirm] = useState("");
 
-  useEffect(() => {
-    if (isLoaded && typeof window !== "undefined") {
-      localStorage.setItem("ttp_teachers_availability", JSON.stringify(availabilityBlocks));
-    }
-  }, [availabilityBlocks, isLoaded]);
 
   useEffect(() => {
     if (teachers.length > 0 && !selectedTeacherId) {
@@ -208,7 +161,7 @@ export default function TeachersDashboard() {
     setBlockModal({ open: true, mode: "edit", block });
   };
 
-  const handleSaveBlock = (e) => {
+  const handleSaveBlock = async (e) => {
     e.preventDefault();
     if (!selectedTeacherId) return;
 
@@ -217,7 +170,6 @@ export default function TeachersDashboard() {
       return h * 60 + m;
     };
 
-    // Validar que hora de inicio sea menor a hora de fin (excepto día completo descanso)
     if (blockForm.type !== "dia_descanso" && toMin(blockForm.startTime) >= toMin(blockForm.endTime)) {
       showToast("⛔ La hora de inicio debe ser menor a la hora de fin.");
       return;
@@ -226,106 +178,92 @@ export default function TeachersDashboard() {
     const start = blockForm.type === "dia_descanso" ? "07:00" : blockForm.startTime;
     const end = blockForm.type === "dia_descanso" ? "22:00" : blockForm.endTime;
 
-    // Verificar empalmes
     const ignoreId = blockModal.mode === "edit" ? blockModal.block.id : null;
     if (hasOverlap(selectedTeacherId, blockForm.day, start, end, ignoreId)) {
       showToast("⚠️ Conflicto: Ya existe un bloque de horario asignado que se empalma en este día y hora.");
       return;
     }
 
-    if (blockModal.mode === "add") {
-      const newBlock = {
-        id: `ab-${Date.now()}`,
-        teacherId: selectedTeacherId,
-        day: blockForm.day,
-        type: blockForm.type,
-        startTime: start,
-        endTime: end,
-        description: blockForm.description
-      };
-      setAvailabilityBlocks(prev => [...prev, newBlock]);
-      showToast("✅ Bloque de disponibilidad registrado.");
-    } else {
-      setAvailabilityBlocks(prev => prev.map(b => b.id === blockModal.block.id ? {
-        ...b,
-        day: blockForm.day,
-        type: blockForm.type,
-        startTime: start,
-        endTime: end,
-        description: blockForm.description
-      } : b));
-      showToast("✏️ Bloque de disponibilidad actualizado.");
+    try {
+      if (blockModal.mode === "add") {
+        const { data, error } = await supabase.from("teacher_availability").insert([{
+          teacher_id: selectedTeacherId,
+          day: blockForm.day,
+          type: blockForm.type,
+          start_time: start,
+          end_time: end,
+          description: blockForm.description
+        }]).select();
+        if (error) throw error;
+        setAvailabilityBlocks(prev => [...prev, {
+          id: data[0].id,
+          teacherId: selectedTeacherId,
+          day: blockForm.day,
+          type: blockForm.type,
+          startTime: start,
+          endTime: end,
+          description: blockForm.description
+        }]);
+        showToast("✅ Bloque de disponibilidad registrado.");
+      } else {
+        const { error } = await supabase.from("teacher_availability").update({
+          day: blockForm.day,
+          type: blockForm.type,
+          start_time: start,
+          end_time: end,
+          description: blockForm.description
+        }).eq("id", blockModal.block.id);
+        if (error) throw error;
+        setAvailabilityBlocks(prev => prev.map(b => b.id === blockModal.block.id ? {
+          ...b, day: blockForm.day, type: blockForm.type, startTime: start, endTime: end, description: blockForm.description
+        } : b));
+        showToast("✏️ Bloque de disponibilidad actualizado.");
+      }
+    } catch (err) {
+      showToast("⛔ Error al guardar bloque.");
     }
     setBlockModal({ open: false, mode: "add", block: null });
   };
 
-  const handleDeleteBlock = (blockId) => {
+  const handleDeleteBlock = async (blockId) => {
+    await supabase.from("teacher_availability").delete().eq("id", blockId);
     setAvailabilityBlocks(prev => prev.filter(b => b.id !== blockId));
     showToast("🗑️ Bloque de disponibilidad eliminado.");
     setBlockModal({ open: false, mode: "add", block: null });
   };
 
-  const handleBulkAvailability = (action) => {
+  const handleBulkAvailability = async (action) => {
     if (!selectedTeacherId) return;
-
-    if (action === "habilitar_todo") {
-      setAvailabilityBlocks(prev => prev.filter(b => b.teacherId !== selectedTeacherId));
-      showToast("✅ Se borraron todos los bloqueos. Disponibilidad completa.");
-    } else if (action === "bloquear_todo") {
-      // Bloquea todos los días como "Día de Descanso"
-      const days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
-      const newBlocks = days.map((day, idx) => ({
-        id: `ab-bulk-${idx}-${Date.now()}`,
-        teacherId: selectedTeacherId,
-        day,
-        type: "dia_descanso",
-        startTime: "07:00",
-        endTime: "22:00",
-        description: "Día completo de descanso"
-      }));
+    const days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+    try {
+      if (action === "habilitar_todo") {
+        await supabase.from("teacher_availability").delete().eq("teacher_id", selectedTeacherId);
+        setAvailabilityBlocks(prev => prev.filter(b => b.teacherId !== selectedTeacherId));
+        showToast("✅ Se borraron todos los bloqueos. Disponibilidad completa.");
+        return;
+      }
+      const configs = {
+        bloquear_todo:    { type: "dia_descanso",  start_time: "07:00", end_time: "22:00", description: "Día completo de descanso" },
+        bloquear_mananas: { type: "no_disponible", start_time: "07:00", end_time: "12:00", description: "Bloqueo matutino general" },
+        bloquear_tardes:  { type: "no_disponible", start_time: "13:00", end_time: "21:00", description: "Bloqueo vespertino general" }
+      };
+      const cfg = configs[action];
+      if (action === "bloquear_todo") {
+        await supabase.from("teacher_availability").delete().eq("teacher_id", selectedTeacherId);
+      }
+      const payloads = days.map(day => ({ teacher_id: selectedTeacherId, day, ...cfg }));
+      const { data, error } = await supabase.from("teacher_availability").insert(payloads).select();
+      if (error) throw error;
+      const newBlocks = data.map(b => ({ id: b.id, teacherId: b.teacher_id, day: b.day, type: b.type, startTime: b.start_time, endTime: b.end_time, description: b.description || "" }));
       setAvailabilityBlocks(prev => [
-        ...prev.filter(b => b.teacherId !== selectedTeacherId),
+        ...prev.filter(b => b.teacherId !== selectedTeacherId || (action !== "bloquear_todo" && b.type === "dia_descanso")),
         ...newBlocks
       ]);
-      showToast("⛔ Se bloquearon todos los días de la semana.");
-    } else if (action === "bloquear_mananas") {
-      const days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
-      const newBlocks = [];
-      days.forEach((day, idx) => {
-        newBlocks.push({
-          id: `ab-bulk-m-${idx}-${Date.now()}`,
-          teacherId: selectedTeacherId,
-          day,
-          type: "no_disponible",
-          startTime: "07:00",
-          endTime: "12:00",
-          description: "Bloqueo matutino general"
-        });
-      });
-      setAvailabilityBlocks(prev => [
-        ...prev.filter(b => b.teacherId !== selectedTeacherId || b.type === "dia_descanso"),
-        ...newBlocks
-      ]);
-      showToast("🌅 Se bloquearon las mañanas (07:00 a 12:00).");
-    } else if (action === "bloquear_tardes") {
-      const days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
-      const newBlocks = [];
-      days.forEach((day, idx) => {
-        newBlocks.push({
-          id: `ab-bulk-e-${idx}-${Date.now()}`,
-          teacherId: selectedTeacherId,
-          day,
-          type: "no_disponible",
-          startTime: "13:00",
-          endTime: "21:00",
-          description: "Bloqueo vespertino general"
-        });
-      });
-      setAvailabilityBlocks(prev => [
-        ...prev.filter(b => b.teacherId !== selectedTeacherId || b.type === "dia_descanso"),
-        ...newBlocks
-      ]);
-      showToast("🌇 Se bloquearon las tardes (13:00 a 21:00).");
+      if (action === "bloquear_todo") showToast("⛔ Se bloquearon todos los días de la semana.");
+      else if (action === "bloquear_mananas") showToast("🌅 Se bloquearon las mañanas (07:00 a 12:00).");
+      else showToast("🌇 Se bloquearon las tardes (13:00 a 21:00).");
+    } catch (err) {
+      showToast("⛔ Error al aplicar cambio masivo.");
     }
   };
 
@@ -374,117 +312,99 @@ export default function TeachersDashboard() {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    const newTeacher = {
-      id: `t-${Date.now()}`,
-      ...formData,
-      rate: Number(formData.rate),
-      classes: 0,
-      students: 0,
-      status: "activo",
-    };
-    setTeachers((prev) => [newTeacher, ...prev]);
-    setAddModal(false);
-    setFormData(emptyForm);
-    showToast(`✅ Maestro ${newTeacher.name} agregado exitosamente.`);
-
-    // Sincronizar en Supabase
     try {
-      const { data: sampleRows } = await supabase.from("teachers").select("*").limit(1);
-      const dbColumns = sampleRows && sampleRows.length > 0 ? Object.keys(sampleRows[0]) : ['name', 'status', 'specialty'];
-
-      const payload = {
-        name: newTeacher.name,
-        status: "active",
-        specialty: newTeacher.specialty
-      };
-
-      if (dbColumns.includes('email')) payload.email = newTeacher.email;
-      if (dbColumns.includes('phone')) payload.phone = newTeacher.phone;
-      if (dbColumns.includes('rate')) payload.rate = newTeacher.rate;
-      if (dbColumns.includes('since')) payload.since = newTeacher.since;
-      if (dbColumns.includes('birthdate')) payload.birthdate = newTeacher.birthdate;
-      if (dbColumns.includes('burlington_user')) payload.burlington_user = newTeacher.burlington_user;
-      if (dbColumns.includes('burlington_pass')) payload.burlington_pass = newTeacher.burlington_pass;
-      if (dbColumns.includes('ttp_user')) payload.ttp_user = newTeacher.ttp_user;
-      if (dbColumns.includes('ttp_pass')) payload.ttp_pass = newTeacher.ttp_pass;
-
-      const { data, error } = await supabase.from("teachers").insert([payload]).select();
+      const { data, error } = await supabase.from("teachers").insert([{
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        specialty: formData.specialty,
+        rate: Number(formData.rate) || null,
+        since: formData.since || null,
+        birthdate: formData.birthdate || null,
+        burlington_user: formData.burlington_user,
+        burlington_pass: formData.burlington_pass,
+        ttp_user: formData.ttp_user,
+        ttp_pass: formData.ttp_pass,
+        status: "active"
+      }]).select();
       if (error) throw error;
-      if (data && data[0]) {
-        const realId = data[0].id;
-        newTeacher.id = realId;
-        setTeachers(prev => prev.map(t => t.email === newTeacher.email ? { ...t, id: realId } : t));
-      }
+      const t = data[0];
+      setTeachers(prev => [{
+        id: t.id,
+        name: t.name,
+        email: t.email || `${t.name.toLowerCase().replace(/\s/g, "")}@ttp.mx`,
+        phone: t.phone || "+52 55 0000 0000",
+        specialty: t.specialty || "Profesor de Inglés",
+        rate: t.rate || 250,
+        since: t.since || "",
+        birthdate: t.birthdate || "",
+        burlington_user: t.burlington_user || "",
+        burlington_pass: t.burlington_pass || "",
+        ttp_user: t.ttp_user || "",
+        ttp_pass: t.ttp_pass || "",
+        classes: 0,
+        students: 0,
+        status: "activo"
+      }, ...prev]);
+      setAddModal(false);
+      setFormData(emptyForm);
+      showToast(`✅ Maestro ${t.name} agregado exitosamente.`);
     } catch (err) {
-      console.warn("Supabase insert bypassed / offline:", err);
+      showToast(`⛔ Error al agregar maestro: ${err.message}`);
     }
   };
 
   const handleEdit = async (e) => {
     e.preventDefault();
-    setTeachers((prev) => prev.map((t) => t.id === editModal.id ? { ...t, ...formData, rate: Number(formData.rate) } : t));
-    const name = formData.name;
-    setEditModal(null);
-    showToast(`✏️ Perfil de ${name} actualizado.`);
-
-    // Sincronizar en Supabase
     try {
-      const { data: sampleRows } = await supabase.from("teachers").select("*").limit(1);
-      const dbColumns = sampleRows && sampleRows.length > 0 ? Object.keys(sampleRows[0]) : ['name', 'status', 'specialty'];
-
-      const payload = {
+      const { error } = await supabase.from("teachers").update({
         name: formData.name,
-        specialty: formData.specialty
-      };
-
-      if (dbColumns.includes('email')) payload.email = formData.email;
-      if (dbColumns.includes('phone')) payload.phone = formData.phone;
-      if (dbColumns.includes('rate')) payload.rate = Number(formData.rate);
-      if (dbColumns.includes('since')) payload.since = formData.since;
-      if (dbColumns.includes('birthdate')) payload.birthdate = formData.birthdate;
-      if (dbColumns.includes('burlington_user')) payload.burlington_user = formData.burlington_user;
-      if (dbColumns.includes('burlington_pass')) payload.burlington_pass = formData.burlington_pass;
-      if (dbColumns.includes('ttp_user')) payload.ttp_user = formData.ttp_user;
-      if (dbColumns.includes('ttp_pass')) payload.ttp_pass = formData.ttp_pass;
-
-      await supabase.from("teachers").update(payload).eq("id", editModal.id);
+        email: formData.email,
+        phone: formData.phone,
+        specialty: formData.specialty,
+        rate: Number(formData.rate) || null,
+        since: formData.since || null,
+        birthdate: formData.birthdate || null,
+        burlington_user: formData.burlington_user,
+        burlington_pass: formData.burlington_pass,
+        ttp_user: formData.ttp_user,
+        ttp_pass: formData.ttp_pass
+      }).eq("id", editModal.id);
+      if (error) throw error;
+      setTeachers(prev => prev.map(t => t.id === editModal.id ? { ...t, ...formData, rate: Number(formData.rate) } : t));
+      showToast(`✏️ Perfil de ${formData.name} actualizado.`);
+      setEditModal(null);
     } catch (err) {
-      console.warn("Supabase update bypassed / offline:", err);
+      showToast(`⛔ Error al actualizar: ${err.message}`);
     }
   };
 
   const handleDelete = async () => {
     if (deleteConfirm !== deleteModal.name) return;
-    setTeachers((prev) => prev.filter((t) => t.id !== deleteModal.id));
-    const name = deleteModal.name;
-    const id = deleteModal.id;
-    setDeleteModal(null);
-    setDeleteConfirm("");
-    showToast(`🗑️ Maestro ${name} eliminado del sistema.`);
-
-    // Sincronizar en Supabase
     try {
-      await supabase.from("teachers").delete().eq("id", id);
+      const { error } = await supabase.from("teachers").delete().eq("id", deleteModal.id);
+      if (error) throw error;
+      setTeachers(prev => prev.filter(t => t.id !== deleteModal.id));
+      showToast(`🗑️ Maestro ${deleteModal.name} eliminado del sistema.`);
+      setDeleteModal(null);
+      setDeleteConfirm("");
     } catch (err) {
-      console.warn("Supabase delete bypassed / offline:", err);
+      showToast(`⛔ Error al eliminar: ${err.message}`);
     }
   };
 
   const handleToggleSuspend = async () => {
     const next = suspendModal.status === "activo" ? "suspendido" : "activo";
-    setTeachers((prev) => prev.map((t) => t.id === suspendModal.id ? { ...t, status: next } : t));
-    const name = suspendModal.name;
-    const id = suspendModal.id;
-    setSuspendModal(null);
-    showToast(next === "suspendido" ? `⛔ ${name} suspendido.` : `✅ ${name} reactivado.`);
-
-    // Sincronizar en Supabase
     try {
-      await supabase.from("teachers").update({
+      const { error } = await supabase.from("teachers").update({
         status: next === "activo" ? "active" : "on_leave"
-      }).eq("id", id);
+      }).eq("id", suspendModal.id);
+      if (error) throw error;
+      setTeachers(prev => prev.map(t => t.id === suspendModal.id ? { ...t, status: next } : t));
+      showToast(next === "suspendido" ? `⛔ ${suspendModal.name} suspendido.` : `✅ ${suspendModal.name} reactivado.`);
+      setSuspendModal(null);
     } catch (err) {
-      console.warn("Supabase suspend bypassed / offline:", err);
+      showToast(`⛔ Error: ${err.message}`);
     }
   };
 
@@ -820,30 +740,17 @@ export default function TeachersDashboard() {
                             (b) => b.teacherId === selectedTeacherId && b.day === day && b.type !== "clase_asignada"
                           );
 
-                          // 2. Mapear las clases oficiales del docente asignadas en horarios
-                          const currentTeacherObj = teachers.find(t => t.id === selectedTeacherId);
-                          const teacherName = currentTeacherObj?.name;
-                          
-                          const REVERSE_DAY_MAP = {
-                            "Lunes": "LUN",
-                            "Martes": "MAR",
-                            "Miércoles": "MIÉ",
-                            "Jueves": "JUE",
-                            "Viernes": "VIE",
-                            "Sábado": "SÁB",
-                            "Domingo": "DOM"
-                          };
-
+                          // Clases asignadas al profesor desde Supabase (por teacher_id)
                           const autoBlocks = classesList
-                            .filter(c => c.teacher === teacherName && (c.daysSelected || []).includes(REVERSE_DAY_MAP[day]))
+                            .filter(c => c.teacher_id === selectedTeacherId)
                             .map(c => ({
                               id: `auto-${c.id}-${day}`,
                               teacherId: selectedTeacherId,
                               day: day,
                               type: "clase_asignada",
-                              startTime: c.startTime || c.slot || "08:00",
-                              endTime: c.endTime || "09:00",
-                              description: `Clase: ${c.title}${c.group ? ` - ${c.group}` : ""}`,
+                              startTime: "08:00",
+                              endTime: "09:00",
+                              description: `Clase: ${c.title}`,
                               isAutoAssigned: true
                             }));
 

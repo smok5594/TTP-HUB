@@ -92,7 +92,18 @@ CREATE TABLE classes (
     status VARCHAR(50) DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'in_progress', 'completed'))
 );
 
--- 7. RECENT ACTIVITIES TABLE
+-- 7. TEACHER AVAILABILITY TABLE
+CREATE TABLE teacher_availability (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
+    day VARCHAR(20) NOT NULL,
+    type VARCHAR(50) NOT NULL CHECK (type IN ('disponible', 'no_disponible', 'dia_descanso', 'clase_asignada')),
+    start_time VARCHAR(10) NOT NULL,
+    end_time VARCHAR(10) NOT NULL,
+    description TEXT DEFAULT ''
+);
+
+-- 8. RECENT ACTIVITIES TABLE
 CREATE TABLE recent_activities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
