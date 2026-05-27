@@ -374,9 +374,11 @@ export default function AdminDashboard() {
     const totalForecast = calculatedTotalIncome + calculatedPendingPayments;
     const forecastPercent = totalForecast > 0 ? Math.round((calculatedTotalIncome / totalForecast) * 100) : 0;
 
-    // activeTeachers y teachersOnLeave
-    const calculatedActiveTeachers = allLocalTeachers.filter((t) => t.status === "active" || t.status === "activo").length;
-    const calculatedTeachersOnLeave = allLocalTeachers.filter((t) => t.status === "on_leave" || t.status === "suspendido").length;
+    // activeTeachers y teachersOnLeave — siempre desde Supabase
+    const { data: dbTeachers } = await supabase.from("teachers").select("status");
+    const teacherSource = dbTeachers || allLocalTeachers;
+    const calculatedActiveTeachers = teacherSource.filter((t) => t.status === "active" || t.status === "activo").length;
+    const calculatedTeachersOnLeave = teacherSource.filter((t) => t.status === "on_leave" || t.status === "suspendido").length;
 
     // classesToday: clases programadas para el día de la semana actual en ttp_schedules_local
     const todayName = now.toLocaleDateString("es-ES", { weekday: "short" }).toUpperCase(); // e.g., "LUN.", "MAR.", "MIÉ.", "JUE.", "VIE.", "SÁB.", "DOM."
