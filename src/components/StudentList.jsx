@@ -214,36 +214,7 @@ export default function StudentList() {
     }
   };
 
-  const handleCreateMockDiego = async () => {
-    setIsLoading(true);
-    try {
-      const { data: existing } = await supabase.from("students").select("id").eq("email", "diego.ramirez@email.com").single();
-      if (existing) { showToast("Diego Ramírez ya existe en la lista."); setIsLoading(false); return; }
-      const { data, error } = await supabase.from("students").insert([{
-        name: "Diego", last_name: "Ramírez", email: "diego.ramirez@email.com",
-        status: "moroso", payment_status: "moroso",
-        current_course: "English Mastery Program", current_group: "Grupo English Mastery",
-        class_type: "grupal", schedule: "Lunes y Miércoles 18:00–19:30",
-        teacher: "Lic. Elena Valdéz", next_payment: "2023-10-26", enrolled_date: "2023-02-15",
-        phone: "+52 55 1234 9876", birthdate: "10 de Abril, 1996",
-        address: "Av. Insurgentes 456, Ciudad de México, CP 06700",
-        nationality: "Mexicana", occupation: "Consultor de Negocios",
-        amount_due: 2450.00, payment_reference: "REF-RAM-2024", last_payment_date: "2023-10-02",
-        burlington_user: "diego.ramirez@ttp", certificates_issued: 0,
-        academic_notes: "Gran fluidez, requiere repasar tiempos verbales del pasado.",
-        admin_notes: "Pendiente pago de colegiatura.",
-        course_history: [{ course: "English A1 – Beginner", period: "Ene 2022 – Jun 2022", status: "completado" }],
-      }]).select();
-      if (error) throw error;
-      setStudents(prev => [data[0], ...prev]);
-      setKpi(prev => ({ ...prev, totalStudents: prev.totalStudents + 1, pendingPayments: prev.pendingPayments + 1 }));
-      showToast("✅ Diego Ramírez registrado exitosamente.");
-    } catch (err) {
-      showToast(`Error: ${err.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
 
   const handleDeleteStudent = (id, name) => {
     setDeleteConfirmModal({
@@ -612,23 +583,16 @@ export default function StudentList() {
                             <div className="space-y-1">
                               <p className="text-slate-700 font-bold text-base">Tu base de datos está vacía</p>
                               <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-                                Como solicitaste vaciar todos los datos de prueba, la lista de alumnos se encuentra limpia. ¡Puedes registrar un nuevo alumno manualmente o crear a <b>Diego Ramírez</b> con un solo clic para ver cómo funciona!
+                                La base de datos de estudiantes se encuentra limpia. ¡Registra a tu primer alumno de forma manual para comenzar!
                               </p>
                             </div>
                             <div className="flex flex-wrap gap-3 mt-2 justify-center">
                               <button
                                 onClick={() => setIsAddModalOpen(true)}
-                                className="bg-ttp-primary text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                                className="bg-ttp-primary text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all shadow-sm"
                               >
                                 <span className="material-symbols-outlined text-sm font-bold">add</span>
-                                Registrar Manualmente
-                              </button>
-                              <button
-                                onClick={handleCreateMockDiego}
-                                className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all shadow-sm"
-                              >
-                                <span className="material-symbols-outlined text-sm text-pink-500 font-fill">auto_awesome</span>
-                                Crear Diego Ramírez de Prueba
+                                Registrar Alumno Manualmente
                               </button>
                             </div>
                           </div>
