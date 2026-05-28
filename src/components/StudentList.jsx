@@ -49,6 +49,9 @@ export default function StudentList() {
     class_type: "grupal",
     schedule: "",
     teacher: "",
+    teacher_id: null,
+    group_id: null,
+    course_id: null,
     next_payment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     enrolled_date: new Date().toISOString().split("T")[0],
     burlington_user: "",
@@ -64,7 +67,7 @@ export default function StudentList() {
     const loadFormData = async () => {
       const [{ data: tData }, { data: gData }] = await Promise.all([
         supabase.from("teachers").select("id, name, specialty, status"),
-        supabase.from("groups").select("id, code, course, schedule, capacity, status")
+        supabase.from("groups").select("id, code, course, schedule, capacity, status, teacher_id")
       ]);
       if (tData) setFormTeachers(tData.map(t => ({ ...t, status: t.status === "active" ? "activo" : "suspendido" })));
       if (gData) setFormGroups(gData.map(g => ({ ...g, title: g.code })));
@@ -73,13 +76,50 @@ export default function StudentList() {
   }, []);
 
   const handleTeacherSelect = (teacherName) => {
-    setNewStudent(p => ({ ...p, teacher: teacherName, current_group: "", current_course: "", schedule: "", class_type: "grupal" }));
+    const t = formTeachers.find(x => x.name === teacherName);
+    setNewStudent(p => ({ 
+      ...p, 
+      teacher: teacherName, 
+      teacher_id: t ? t.id : null,
+      current_group: "", 
+      current_course: "", 
+      group_id: null,
+      course_id: null,
+      schedule: "", 
+      class_type: "grupal" 
+    }));
   };
 
-  const handleGroupSelect = (groupTitle) => {
+  const handleGroupSelect = async (groupTitle) => {
     const g = formGroups.find(gr => gr.title === groupTitle);
     if (!g) return;
-    setNewStudent(p => ({ ...p, current_group: g.title, current_course: g.title, schedule: g.schedule, class_type: g.class_type }));
+
+    let resolvedCourseId = null;
+    if (g.course) {
+      const { data: cData } = await supabase.from("courses").select("id").ilike("name", g.course).limit(1);
+      if (cData && cData.length > 0) {
+        resolvedCourseId = cData[0].id;
+      }
+    }
+
+    let resolvedTeacherId = g.teacher_id || null;
+    let resolvedTeacherName = "";
+    if (resolvedTeacherId) {
+      const t = formTeachers.find(x => x.id === resolvedTeacherId);
+      resolvedTeacherName = t ? t.name : "";
+    }
+
+    setNewStudent(p => ({ 
+      ...p, 
+      current_group: g.title, 
+      current_course: g.course || g.title, 
+      group_id: g.id || null,
+      course_id: resolvedCourseId,
+      teacher_id: resolvedTeacherId || p.teacher_id,
+      teacher: resolvedTeacherName || p.teacher,
+      schedule: g.schedule, 
+      class_type: g.class_type || "grupal" 
+    }));
   };
 
   const CT_LABEL_FORM = { grupal: "Grupal", privada: "Privada", conversation_club: "Conversation Club" };
@@ -143,6 +183,9 @@ export default function StudentList() {
         phone: newStudent.phone, status: newStudent.status, payment_status: newStudent.payment_status,
         current_course: newStudent.current_course, current_group: newStudent.current_group,
         class_type: newStudent.class_type, schedule: newStudent.schedule, teacher: newStudent.teacher,
+        teacher_id: newStudent.teacher_id || null,
+        group_id: newStudent.group_id || null,
+        course_id: newStudent.course_id || null,
         next_payment: newStudent.next_payment, burlington_user: newStudent.burlington_user,
         admin_notes: newStudent.admin_notes, academic_notes: newStudent.academic_notes,
         enrolled_date: newStudent.enrolled_date || new Date().toISOString().split("T")[0],
@@ -161,6 +204,7 @@ export default function StudentList() {
       setNewStudent({
         name: "", last_name: "", email: "", phone: "", status: "active", payment_status: "pendiente",
         current_course: "", current_group: "", class_type: "grupal", schedule: "", teacher: "",
+        teacher_id: null, group_id: null, course_id: null,
         next_payment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
         enrolled_date: new Date().toISOString().split("T")[0],
         burlington_user: "", admin_notes: "", academic_notes: "", amount_due: "2450",

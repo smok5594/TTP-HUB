@@ -263,6 +263,9 @@ export default function StudentProfile({ id }) {
       current_group: student.current_group || "",
       class_type: student.class_type || "grupal",
       teacher: student.teacher || "",
+      teacher_id: student.teacher_id || null,
+      group_id: student.group_id || null,
+      course_id: student.course_id || null,
       schedule: student.schedule || "",
       amount_due: student.amount_due ?? 0,
       payment_reference: student.payment_reference || "",
@@ -306,11 +309,26 @@ export default function StudentProfile({ id }) {
       else finalStatus = "active";
     }
 
+    // Resolve relational UUIDs dynamically from their names
+    const resolvedTeacher = formTeachers.find(t => t.name === editForm.teacher);
+    const resolvedGroup = formGroups.find(g => g.title === editForm.current_group || g.code === editForm.current_group);
+    
+    let resolvedCourseId = editForm.course_id || null;
+    if (resolvedGroup && resolvedGroup.course) {
+      const { data: cData } = await supabase.from("courses").select("id").ilike("name", resolvedGroup.course).limit(1);
+      if (cData && cData.length > 0) {
+        resolvedCourseId = cData[0].id;
+      }
+    }
+
     const updated = {
       ...student,
       ...editForm,
       status: finalStatus,
-      amount_due: parseFloat(editForm.amount_due) || 0
+      amount_due: parseFloat(editForm.amount_due) || 0,
+      teacher_id: resolvedTeacher ? resolvedTeacher.id : null,
+      group_id: resolvedGroup ? resolvedGroup.id : null,
+      course_id: resolvedCourseId
     };
 
     // Si el estado cambia a inactive o graduated, agregamos notas correspondientes
@@ -337,6 +355,9 @@ export default function StudentProfile({ id }) {
       current_group: updated.current_group,
       class_type: updated.class_type,
       teacher: updated.teacher,
+      teacher_id: updated.teacher_id,
+      group_id: updated.group_id,
+      course_id: updated.course_id,
       schedule: updated.schedule,
       amount_due: updated.amount_due,
       payment_reference: updated.payment_reference,

@@ -146,6 +146,12 @@ export default function AcademicManagement({ showToast }) {
       if (student.schedule) updateData.schedule = student.schedule;
       if (student.teacher) updateData.teacher = student.teacher;
       if (student.class_type) updateData.class_type = student.class_type;
+      
+      // Update UUID links if present
+      if (student.teacher_id !== undefined) updateData.teacher_id = student.teacher_id;
+      if (student.group_id !== undefined) updateData.group_id = student.group_id;
+      if (student.course_id !== undefined) updateData.course_id = student.course_id;
+
       if (student.amount_due !== undefined) {
         updateData.amount_due = student.amount_due;
         updateData.payment_status = student.payment_status || "pendiente";
@@ -167,13 +173,31 @@ export default function AcademicManagement({ showToast }) {
     let extra = {};
     if (type === "course") {
       extra = { current_group: newValue };
+      const g = groups.find(x => x.title === newValue || x.code === newValue);
+      if (g) {
+        extra.group_id = g.id || null;
+        const { data: cData } = await supabase.from("courses").select("id").ilike("name", g.course || newValue).limit(1);
+        if (cData && cData.length > 0) {
+          extra.course_id = cData[0].id;
+        }
+      }
     } else if (type === "group") {
-      extra = { teacher: selectedTeacher || student.teacher };
-      const match = groups.find(g => g.teacher === (selectedTeacher || student.teacher) && g.class_type === newValue);
+      const selectedTName = selectedTeacher || student.teacher;
+      const t = teachers.find(x => x.name === selectedTName);
+      extra = { 
+        teacher: selectedTName,
+        teacher_id: t ? t.id : null
+      };
+      const match = groups.find(g => g.teacher === selectedTName && g.class_type === newValue);
       if (match) {
-        extra.current_course = match.title;
-        extra.current_group = match.title;
+        extra.current_course = match.course || match.title || "";
+        extra.current_group = match.title || match.code || "";
+        extra.group_id = match.id || null;
         extra.schedule = match.schedule;
+        const { data: cData } = await supabase.from("courses").select("id").ilike("name", match.course || match.title).limit(1);
+        if (cData && cData.length > 0) {
+          extra.course_id = cData[0].id;
+        }
       }
       let fee = 2450.00;
       if (newValue === "privada") fee = 3200.00;
@@ -191,6 +215,9 @@ export default function AcademicManagement({ showToast }) {
         type: "payment",
         method: "Manual",
       }]);
+    } else if (type === "teacher") {
+      const t = teachers.find(x => x.name === newValue);
+      extra = { teacher_id: t ? t.id : null };
     }
 
     const updatedStudent = { ...student, [meta.field]: newValue, ...extra };
@@ -218,7 +245,7 @@ export default function AcademicManagement({ showToast }) {
   // ── All enrollments for a student (primary + extras) ────────────────────────
   const allEnrollmentsOf = (s) => [
     ...(s.current_course || s.current_group
-      ? [{ course: s.current_course || s.current_group, group: s.current_group || s.current_course, teacher: s.teacher, schedule: s.schedule, class_type: s.class_type }]
+      ? [{ course: s.current_course || s.current_group, group: s.current_group || s.current_course, teacher: s.teacher, schedule: s.schedule, class_type: s.class_type, teacher_id: s.teacher_id || null, group_id: s.group_id || null, course_id: s.course_id || null }]
       : []),
     ...(s.enrollments || []),
   ];
@@ -243,7 +270,26 @@ export default function AcademicManagement({ showToast }) {
       }
     }
 
-    const newEnroll = { course: group.title, group: group.title, teacher: group.teacher, schedule: group.schedule, class_type: group.class_type };
+    const teacherObj = teachers.find(t => t.name === group.teacher);
+    let resolvedCourseId = null;
+    if (group.course) {
+      const { data: cData } = await supabase.from("courses").select("id").ilike("name", group.course).limit(1);
+      if (cData && cData.length > 0) {
+        resolvedCourseId = cData[0].id;
+      }
+    }
+
+    const newEnroll = { 
+      course: group.course || group.title, 
+      group: group.title, 
+      teacher: group.teacher, 
+      schedule: group.schedule, 
+      class_type: group.class_type,
+      group_id: group.id || null,
+      course_id: resolvedCourseId,
+      teacher_id: teacherObj ? teacherObj.id : null
+    };
+
     const updatedStudent = { ...student, enrollments: [...(student.enrollments || []), newEnroll] };
     setStudents(prev => prev.map(s => s.id === student.id ? updatedStudent : s));
     await supabase.from("students").update({ enrollments: updatedStudent.enrollments }).eq("id", student.id);
