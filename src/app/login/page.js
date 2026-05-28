@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/utils/supabaseClient";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -49,21 +50,15 @@ export default function LoginPage() {
   const handleGoogleLogin = () => {
     setLoading(true);
     setError(null);
-    
-    // Simular el retardo elegante de la ventana emergente de Google Auth
-    setTimeout(() => {
-      // Si el campo de correo está vacío, simular el login con el correo admin por defecto o pedir selección
-      const targetEmail = email ? email.trim().toLowerCase() : "alexapuch@hotmail.com";
-      performLogin(targetEmail);
-    }, 1200);
+    const targetEmail = email ? email.trim().toLowerCase() : "alexapuch@hotmail.com";
+    setTimeout(() => performLogin(targetEmail), 1200);
   };
 
-  const performLogin = (targetEmail) => {
+  const performLogin = async (targetEmail) => {
     setLoading(true);
     setError(null);
 
-    // 1. Determinar el rol basándose en el correo electrónico
-    let role = "student"; // Default fallback
+    let role = "student";
     let name = "Usuario TTP";
     let profile = null;
 
@@ -71,32 +66,13 @@ export default function LoginPage() {
       role = "admin";
       name = "Alexa Montserrat";
     } else {
-      // 2. Verificar contra la lista de maestros registrados
-      let teachersList = [];
-      const storedTeachers = localStorage.getItem("ttp_teachers_local");
-      if (storedTeachers) {
-        try { 
-          teachersList = JSON.parse(storedTeachers); 
-          // Autocuración: Si los docentes no tienen correos, se los asignamos dinámicamente
-          teachersList = teachersList.map(t => {
-            if (!t.email) {
-              const lowerName = t.name.toLowerCase();
-              if (lowerName.includes("elena")) t.email = "e.valdez@ttp.mx";
-              else if (lowerName.includes("wilson") || lowerName.includes("james")) t.email = "m.johnson@ttp.mx";
-              else if (lowerName.includes("parker") || lowerName.includes("carmen") || lowerName.includes("sarah")) t.email = "c.rios@ttp.mx";
-              else if (lowerName.includes("brown") || lowerName.includes("robert") || lowerName.includes("salas")) t.email = "r.salas@ttp.mx";
-              else t.email = `${t.name.toLowerCase().replace(/[^a-z]/g, "")}@ttp.mx`;
-            }
-            return t;
-          });
-          localStorage.setItem("ttp_teachers_local", JSON.stringify(teachersList));
-        } catch (e) {}
-      } else {
-        teachersList = [];
-        localStorage.setItem("ttp_teachers_local", JSON.stringify(teachersList));
-      }
+      // Check teachers in Supabase
+      const { data: teachers } = await supabase
+        .from("teachers")
+        .select("id, name, email, specialty, status")
+        .ilike("email", targetEmail);
 
-      const matchedTeacher = teachersList.find(
+      const matchedTeacher = (teachers || []).find(
         (t) => t.email && t.email.toLowerCase() === targetEmail
       );
 
@@ -105,56 +81,35 @@ export default function LoginPage() {
         name = matchedTeacher.name;
         profile = matchedTeacher;
       } else {
-        // 3. Verificar contra la lista de estudiantes registrados
-        let studentsList = [];
-        const storedStudents = localStorage.getItem("ttp_students_local");
-        if (storedStudents) {
-          try { studentsList = JSON.parse(storedStudents); } catch (e) {}
-        } else {
-          studentsList = [
-            { id: "s1", name: "Elena Rodríguez", email: "elena.rod@email.com" },
-            { id: "s2", name: "Carlos Méndez", email: "c.mendez@mail.es" },
-            { id: "s3", name: "Mateo Vizcarra", email: "m.viz@email.com" },
-            { id: "s4", name: "Lucía Ferreyra", email: "lucia.f@provider.com" }
-          ];
-        }
+        // Check students in Supabase
+        const { data: students } = await supabase
+          .from("students")
+          .select("id, name, last_name, email, status, current_course, teacher, schedule, payment_status, amount_due")
+          .ilike("email", targetEmail);
 
-        const matchedStudent = studentsList.find(
+        const matchedStudent = (students || []).find(
           (s) => s.email && s.email.toLowerCase() === targetEmail
         );
 
         if (matchedStudent) {
           role = "student";
-          name = matchedStudent.name;
+          name = `${matchedStudent.name} ${matchedStudent.last_name || ""}`.trim();
           profile = matchedStudent;
+        } else if (targetEmail.includes("@")) {
+          role = "student";
+          name = targetEmail.split("@")[0].toUpperCase();
         } else {
-          // Si no está registrado pero quiere ingresar, permitimos crear sesión temporal
-          // para no bloquear el flujo de desarrollo en caliente
-          if (targetEmail.includes("@")) {
-            role = "student";
-            name = targetEmail.split("@")[0].toUpperCase();
-          } else {
-            setLoading(false);
-            setError("Por favor ingresa un correo electrónico válido.");
-            return;
-          }
+          setLoading(false);
+          setError("Por favor ingresa un correo electrónico válido.");
+          return;
         }
       }
     }
 
-    // Guardar la sesión activa
-    const sessionObj = {
-      email: targetEmail,
-      name: name,
-      role: role,
-      profile: profile,
-      timestamp: Date.now()
-    };
-    
+    const sessionObj = { email: targetEmail, name, role, profile, timestamp: Date.now() };
     localStorage.setItem("ttp_user_session", JSON.stringify(sessionObj));
     setSuccess(`¡Bienvenido de vuelta, ${name}!`);
 
-    // Retardo para la transición visual
     setTimeout(() => {
       setLoading(false);
       redirectByRole(role);

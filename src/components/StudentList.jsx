@@ -35,48 +35,6 @@ export default function StudentList() {
     pendingPayments: 0
   });
 
-  // ── localStorage helpers ──────────────────────────────────────────────────
-  const DEFAULT_STUDENTS = [];
-
-  const getLocalStudents = () => {
-    if (typeof window === "undefined") return DEFAULT_STUDENTS;
-    const stored = localStorage.getItem("ttp_students_local");
-    let list = DEFAULT_STUDENTS;
-    if (stored) {
-      try { list = JSON.parse(stored); } catch { list = DEFAULT_STUDENTS; }
-    } else {
-      localStorage.setItem("ttp_students_local", JSON.stringify(DEFAULT_STUDENTS));
-      list = DEFAULT_STUDENTS;
-    }
-
-    // Auto-curación: Filtrar correos de docentes de la base de datos de estudiantes
-    let teacherEmails = ["e.valdez@ttp.mx", "m.johnson@ttp.mx", "c.rios@ttp.mx", "r.salas@ttp.mx"];
-    const storedTeachers = localStorage.getItem("ttp_teachers_local");
-    if (storedTeachers) {
-      try {
-        const teachers = JSON.parse(storedTeachers);
-        const fetchedEmails = teachers.map(t => t.email && t.email.toLowerCase()).filter(Boolean);
-        if (fetchedEmails.length > 0) {
-          teacherEmails = fetchedEmails;
-        }
-      } catch (e) {}
-    }
-
-    const cleaned = list.filter(s => !s.email || !teacherEmails.includes(s.email.toLowerCase()));
-    if (cleaned.length !== list.length) {
-      localStorage.setItem("ttp_students_local", JSON.stringify(cleaned));
-      return cleaned;
-    }
-    return list;
-  };
-
-
-  const saveLocalStudents = (list) => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("ttp_students_local", JSON.stringify(list));
-    }
-  };
-  // ─────────────────────────────────────────────────────────────────────────
 
   // Datos para el formulario de Nuevo Alumno
   const [newStudent, setNewStudent] = useState({
@@ -99,50 +57,19 @@ export default function StudentList() {
     amount_due: "2450",
   });
 
-  // Grupos y maestros cargados desde localStorage (mismas fuentes que AcademicManagement)
   const [formGroups,   setFormGroups]   = useState([]);
   const [formTeachers, setFormTeachers] = useState([]);
 
   useEffect(() => {
-    const g = typeof window !== "undefined" && localStorage.getItem("ttp_groups_local");
-    const t = typeof window !== "undefined" && localStorage.getItem("ttp_teachers_local");
-    if (g) { try { setFormGroups(JSON.parse(g)); } catch {} }
-    if (t) { try { setFormTeachers(JSON.parse(t)); } catch {} }
-
-    // Sincronizar profesores desde Supabase en caliente
-    const syncTeachersFromDB = async () => {
-      try {
-        const { data, error } = await supabase.from("teachers").select("*");
-        if (error) throw error;
-        if (data && data.length > 0) {
-          const mapped = data.map(t => ({
-            id: t.id,
-            name: t.name,
-            email: t.email || `${t.name.toLowerCase().replace(/\s/g, "")}@ttp.mx`,
-            phone: t.phone || "+52 55 0000 0000",
-            specialty: t.specialty || "Profesor de Inglés",
-            rate: t.rate || 250,
-            since: t.since || "Enero 2024",
-            birthdate: t.birthdate || "",
-            burlington_user: t.burlington_user || "",
-            burlington_pass: t.burlington_pass || "",
-            ttp_user: t.ttp_user || "",
-            ttp_pass: t.ttp_pass || "",
-            classes: t.classes || 0,
-            students: t.students || 0,
-            status: t.status === "active" ? "activo" : "suspendido"
-          }));
-          setFormTeachers(mapped);
-          if (typeof window !== "undefined") {
-            localStorage.setItem("ttp_teachers_local", JSON.stringify(mapped));
-          }
-        }
-      } catch (err) {
-        console.log("Error sincronizando profesores desde la base de datos:", err);
-      }
+    const loadFormData = async () => {
+      const [{ data: tData }, { data: gData }] = await Promise.all([
+        supabase.from("teachers").select("id, name, specialty, status"),
+        supabase.from("groups").select("id, code, course, schedule, capacity, status")
+      ]);
+      if (tData) setFormTeachers(tData.map(t => ({ ...t, status: t.status === "active" ? "activo" : "suspendido" })));
+      if (gData) setFormGroups(gData.map(g => ({ ...g, title: g.code })));
     };
-
-    syncTeachersFromDB();
+    loadFormData();
   }, []);
 
   const handleTeacherSelect = (teacherName) => {
@@ -168,111 +95,37 @@ export default function StudentList() {
     else toast(msg);
   };
 
-  const calculateAutoStatus = (s) => {
-    // 1. Falta de pago (si payment_status es moroso o si tiene adeudo > 0)
-    const hasDebt = s.payment_status === "moroso" || s.payment_status === "pago_fallido" || (s.amount_due && parseFloat(s.amount_due) > 0);
-    
-    // 2. Inactivo (si no se ha conectado en más de 14 días)
-    let isInactive = false;
-    if (s.last_connection_date) {
-      const lastConn = new Date(s.last_connection_date);
-      const diffTime = Math.abs(new Date() - lastConn);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDays > 14) {
-        isInactive = true;
-      }
-    }
-    
-    if (isInactive) return "inactive";
-    if (hasDebt) return "moroso";
-    return s.status === "inactive" || s.status === "moroso" ? "active" : (s.status || "active");
-  };
 
-  // Carga de Alumnos y cálculos de KPI
   const fetchStudents = async () => {
     setIsLoading(true);
-
-    // localStorage es la fuente primaria — siempre carga primero
-    const allLocal = getLocalStudents();
-    
-    // Auto-calcular estados si están en modo automático
-    const updatedLocal = allLocal.map(s => {
-      const mode = s.status_mode || "auto"; // Default a automático
-      if (mode === "auto") {
-        const autoStat = calculateAutoStatus(s);
-        if (s.status !== autoStat) {
-          return { ...s, status_mode: "auto", status: autoStat };
-        }
-      }
-      return { ...s, status_mode: mode };
-    });
-
-    const hasChanges = updatedLocal.some((s, idx) => s.status !== allLocal[idx].status || s.status_mode !== allLocal[idx].status_mode);
-    if (hasChanges) {
-      saveLocalStudents(updatedLocal);
-    }
-
-    let filtered = [...updatedLocal];
-    
-    // Partition list: active_list tab filters out graduated and inactive, inactive_list shows them
-    if (studentSubTab === "active_list") {
-      filtered = filtered.filter(s => s.status !== "graduated" && s.status !== "inactive");
-    } else {
-      filtered = filtered.filter(s => s.status === "graduated" || s.status === "inactive");
-    }
-
-    if (search.trim()) {
-      filtered = filtered.filter(s => 
-        s.name.toLowerCase().includes(search.toLowerCase()) || 
-        (s.last_name && s.last_name.toLowerCase().includes(search.toLowerCase())) ||
-        s.email.toLowerCase().includes(search.toLowerCase())
-      );
-    }
-    if (statusFilter) filtered = filtered.filter(s => s.status === statusFilter);
-    if (courseFilter) filtered = filtered.filter(s => s.current_course && s.current_course.toLowerCase().includes(courseFilter.toLowerCase()));
-    if (teacherFilter) filtered = filtered.filter(s => s.teacher && s.teacher.toLowerCase().includes(teacherFilter.toLowerCase()));
-    if (startDateFilter) filtered = filtered.filter(s => s.enrolled_date && s.enrolled_date.includes(startDateFilter));
-    if (paymentDateFilter) filtered = filtered.filter(s => s.next_payment && s.next_payment.includes(paymentDateFilter));
-    
-    setStudents(filtered);
-    setKpi({
-      totalStudents: allLocal.length,
-      attendance: allLocal.length > 0 ? "94.2%" : "0%",
-      pendingPayments: allLocal.filter(s => s.status === "moroso").length,
-    });
-
-    // Intentar sincronizar con Supabase (opcional — no afecta localStorage si falla)
     try {
-      let query = supabase.from("students").select("*");
-      if (search.trim()) query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+      let query = supabase.from("students").select("*").order("created_at", { ascending: false });
+      if (search.trim()) query = query.or(`name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`);
       if (statusFilter) query = query.eq("status", statusFilter);
       if (courseFilter) query = query.ilike("current_course", `%${courseFilter}%`);
       if (teacherFilter) query = query.ilike("teacher", `%${teacherFilter}%`);
       if (startDateFilter) query = query.ilike("enrolled_date", `%${startDateFilter}%`);
       if (paymentDateFilter) query = query.ilike("next_payment", `%${paymentDateFilter}%`);
-      
-      const { data, error } = await query.order("created_at", { ascending: false });
+
+      const { data, error } = await query;
       if (error) throw error;
-      if (data && data.length > 0) {
-        // Supabase tiene datos reales — sincronizar a localStorage y actualizar vista
-        saveLocalStudents(data);
-        
-        let filteredData = [...data];
-        if (studentSubTab === "active_list") {
-          filteredData = filteredData.filter(s => s.status !== "graduated" && s.status !== "inactive");
-        } else {
-          filteredData = filteredData.filter(s => s.status === "graduated" || s.status === "inactive");
-        }
-        
-        setStudents(filteredData);
-        setKpi({
-          totalStudents: data.length,
-          attendance: "94.2%",
-          pendingPayments: data.filter(s => s.status === "moroso").length,
-        });
+
+      const all = data || [];
+      let filtered = [...all];
+      if (studentSubTab === "active_list") {
+        filtered = filtered.filter(s => s.status !== "graduated" && s.status !== "inactive");
+      } else {
+        filtered = filtered.filter(s => s.status === "graduated" || s.status === "inactive");
       }
-    } catch {
-      // Supabase no disponible — localStorage ya fue cargado arriba, no hacer nada
+
+      setStudents(filtered);
+      setKpi({
+        totalStudents: all.length,
+        attendance: all.length > 0 ? "94.2%" : "0%",
+        pendingPayments: all.filter(s => s.status === "moroso").length,
+      });
+    } catch (err) {
+      console.error("Error cargando estudiantes:", err);
     } finally {
       setIsLoading(false);
     }
@@ -282,126 +135,52 @@ export default function StudentList() {
     fetchStudents();
   }, [search, statusFilter, courseFilter, teacherFilter, startDateFilter, paymentDateFilter, currentView, studentSubTab]);
 
-  // Manejar el submit del formulario de registro de Nuevo Alumno
   const handleAddStudent = async (e) => {
     e.preventDefault();
-
-    const studentToAdd = {
-      id: `local-${Date.now()}`,
-      name: newStudent.name,
-      last_name: newStudent.last_name,
-      email: newStudent.email,
-      phone: newStudent.phone,
-      status: newStudent.status,
-      payment_status: newStudent.payment_status,
-      current_course: newStudent.current_course,
-      current_group: newStudent.current_group,
-      class_type: newStudent.class_type,
-      schedule: newStudent.schedule,
-      teacher: newStudent.teacher,
-      next_payment: newStudent.next_payment,
-      burlington_user: newStudent.burlington_user,
-      admin_notes: newStudent.admin_notes,
-      academic_notes: newStudent.academic_notes,
-      course_history: [],
-      certificates_issued: 0,
-      enrolled_date: newStudent.enrolled_date || new Date().toISOString().split("T")[0],
-      amount_due: parseFloat(newStudent.amount_due) || 0,
-    };
-
-    // Guardar en localStorage PRIMERO — garantiza persistencia sin importar Supabase
-    const allStudents = getLocalStudents();
-    saveLocalStudents([studentToAdd, ...allStudents]);
-    setStudents((prev) => [studentToAdd, ...prev]);
-    setKpi((prev) => ({
-      totalStudents: prev.totalStudents + 1,
-      attendance: "94.2%",
-      pendingPayments: newStudent.status === "moroso" ? prev.pendingPayments + 1 : prev.pendingPayments,
-    }));
-
-    showToast(`¡Estudiante ${newStudent.name} registrado exitosamente!`);
-    setIsAddModalOpen(false);
-    setNewStudent({
-      name: "", last_name: "", email: "", phone: "", status: "active", payment_status: "pendiente",
-      current_course: "English B2 - Advanced", current_group: "", class_type: "grupal", schedule: "",
-      teacher: "James Wilson", 
-      next_payment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      enrolled_date: new Date().toISOString().split("T")[0],
-      burlington_user: "", admin_notes: "", academic_notes: "",
-      amount_due: "2450",
-    });
-
-    // Intentar también guardar en Supabase y obtener el ID real
     try {
       const { data, error } = await supabase.from("students").insert([{
-        name: studentToAdd.name, last_name: studentToAdd.last_name, email: studentToAdd.email,
-        phone: studentToAdd.phone, status: studentToAdd.status, payment_status: studentToAdd.payment_status,
-        current_course: studentToAdd.current_course, current_group: studentToAdd.current_group,
-        class_type: studentToAdd.class_type, schedule: studentToAdd.schedule, teacher: studentToAdd.teacher,
-        next_payment: studentToAdd.next_payment, burlington_user: studentToAdd.burlington_user,
-        admin_notes: studentToAdd.admin_notes, academic_notes: studentToAdd.academic_notes,
-        enrolled_date: studentToAdd.enrolled_date,
-        amount_due: studentToAdd.amount_due,
+        name: newStudent.name, last_name: newStudent.last_name, email: newStudent.email,
+        phone: newStudent.phone, status: newStudent.status, payment_status: newStudent.payment_status,
+        current_course: newStudent.current_course, current_group: newStudent.current_group,
+        class_type: newStudent.class_type, schedule: newStudent.schedule, teacher: newStudent.teacher,
+        next_payment: newStudent.next_payment, burlington_user: newStudent.burlington_user,
+        admin_notes: newStudent.admin_notes, academic_notes: newStudent.academic_notes,
+        enrolled_date: newStudent.enrolled_date || new Date().toISOString().split("T")[0],
+        amount_due: parseFloat(newStudent.amount_due) || 0,
+        course_history: [], certificates_issued: 0,
       }]).select();
       if (error) throw error;
-      if (data && data[0]) {
-        const realId = data[0].id;
-        studentToAdd.id = realId;
-        const currentLocal = getLocalStudents();
-        const updatedLocal = currentLocal.map(s => s.email === studentToAdd.email ? { ...s, id: realId } : s);
-        saveLocalStudents(updatedLocal);
-        setStudents(prev => prev.map(s => s.email === studentToAdd.email ? { ...s, id: realId } : s));
-      }
+      setStudents(prev => [data[0], ...prev]);
+      setKpi(prev => ({
+        totalStudents: prev.totalStudents + 1,
+        attendance: "94.2%",
+        pendingPayments: newStudent.status === "moroso" ? prev.pendingPayments + 1 : prev.pendingPayments,
+      }));
+      showToast(`✅ Estudiante ${newStudent.name} registrado exitosamente.`);
+      setIsAddModalOpen(false);
+      setNewStudent({
+        name: "", last_name: "", email: "", phone: "", status: "active", payment_status: "pendiente",
+        current_course: "", current_group: "", class_type: "grupal", schedule: "", teacher: "",
+        next_payment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+        enrolled_date: new Date().toISOString().split("T")[0],
+        burlington_user: "", admin_notes: "", academic_notes: "", amount_due: "2450",
+      });
     } catch (err) {
-      console.warn("Error guardando en Supabase:", err);
+      showToast(`Error: ${err.message}`);
     }
   };
 
-  // Crear Diego Ramírez de prueba automáticamente
   const handleCreateMockDiego = async () => {
     setIsLoading(true);
-
-    const diego = {
-      id: "ttp-2024-0941",
-      name: "Diego", last_name: "Ramírez", email: "diego.ramirez@email.com",
-      status: "moroso", payment_status: "moroso",
-      current_course: "English Mastery Program", current_group: "Grupo English Mastery",
-      class_type: "grupal", schedule: "Lunes y Miércoles 18:00–19:30",
-      teacher: "Lic. Elena Valdéz", next_payment: "2023-10-26", enrolled_date: "2023-02-15",
-      phone: "+52 55 1234 9876", birthdate: "10 de Abril, 1996",
-      address: "Av. Insurgentes 456, Ciudad de México, CP 06700",
-      nationality: "Mexicana", occupation: "Consultor de Negocios",
-      amount_due: 2450.00, payment_reference: "REF-RAM-2024", last_payment_date: "2023-10-02",
-      burlington_user: "diego.ramirez@ttp", certificates_issued: 0,
-      academic_notes: "Gran fluidez, requiere repasar tiempos verbales del pasado.",
-      admin_notes: "Pendiente pago de colegiatura.",
-      course_history: [
-        { course: "English A1 – Beginner", period: "Ene 2022 – Jun 2022", status: "completado" }
-      ],
-    };
-
-    // Guardar en localStorage PRIMERO — garantiza persistencia
-    const allStudents = getLocalStudents();
-    const alreadyExists = allStudents.some(s => s.email === diego.email);
-    if (alreadyExists) {
-      showToast("Diego Ramírez ya existe en la lista.");
-      setIsLoading(false);
-      return;
-    }
-    saveLocalStudents([diego, ...allStudents]);
-    setStudents((prev) => [diego, ...prev]);
-    setKpi((prev) => ({ ...prev, totalStudents: prev.totalStudents + 1, pendingPayments: prev.pendingPayments + 1 }));
-    showToast("¡Diego Ramírez registrado exitosamente!");
-    setIsLoading(false);
-
-    // Intentar también guardar en Supabase y obtener el ID real
     try {
+      const { data: existing } = await supabase.from("students").select("id").eq("email", "diego.ramirez@email.com").single();
+      if (existing) { showToast("Diego Ramírez ya existe en la lista."); setIsLoading(false); return; }
       const { data, error } = await supabase.from("students").insert([{
         name: "Diego", last_name: "Ramírez", email: "diego.ramirez@email.com",
         status: "moroso", payment_status: "moroso",
         current_course: "English Mastery Program", current_group: "Grupo English Mastery",
         class_type: "grupal", schedule: "Lunes y Miércoles 18:00–19:30",
-        teacher: "Lic. Elena Valdéz", next_payment: "2023-10-26",
+        teacher: "Lic. Elena Valdéz", next_payment: "2023-10-26", enrolled_date: "2023-02-15",
         phone: "+52 55 1234 9876", birthdate: "10 de Abril, 1996",
         address: "Av. Insurgentes 456, Ciudad de México, CP 06700",
         nationality: "Mexicana", occupation: "Consultor de Negocios",
@@ -409,52 +188,35 @@ export default function StudentList() {
         burlington_user: "diego.ramirez@ttp", certificates_issued: 0,
         academic_notes: "Gran fluidez, requiere repasar tiempos verbales del pasado.",
         admin_notes: "Pendiente pago de colegiatura.",
-        course_history: JSON.stringify(diego.course_history),
+        course_history: [{ course: "English A1 – Beginner", period: "Ene 2022 – Jun 2022", status: "completado" }],
       }]).select();
       if (error) throw error;
-      if (data && data[0]) {
-        const realId = data[0].id;
-        diego.id = realId;
-        const currentLocal = getLocalStudents();
-        const updatedLocal = currentLocal.map(s => s.email === diego.email ? { ...s, id: realId } : s);
-        saveLocalStudents(updatedLocal);
-        setStudents(prev => prev.map(s => s.email === diego.email ? { ...s, id: realId } : s));
-      }
+      setStudents(prev => [data[0], ...prev]);
+      setKpi(prev => ({ ...prev, totalStudents: prev.totalStudents + 1, pendingPayments: prev.pendingPayments + 1 }));
+      showToast("✅ Diego Ramírez registrado exitosamente.");
     } catch (err) {
-      console.warn("Error guardando a Diego en Supabase:", err);
+      showToast(`Error: ${err.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Borrar estudiante para control administrativo premium
   const handleDeleteStudent = (id, name) => {
     setDeleteConfirmModal({
-      name: name,
+      name,
       onConfirm: async () => {
-        // Eliminar de localStorage PRIMERO
-        const updated = getLocalStudents().filter(s => s.id !== id);
-        saveLocalStudents(updated);
-        setStudents(prev => prev.filter(s => s.id !== id));
-        setKpi(prev => ({ ...prev, totalStudents: Math.max(0, prev.totalStudents - 1) }));
-        showToast("Estudiante eliminado.");
-
-        // Intentar también eliminar de Supabase
         try {
           const { error } = await supabase.from("students").delete().eq("id", id);
           if (error) throw error;
-        } catch {
-          // Supabase no disponible — ya eliminado de localStorage
+          setStudents(prev => prev.filter(s => s.id !== id));
+          setKpi(prev => ({ ...prev, totalStudents: Math.max(0, prev.totalStudents - 1) }));
+          showToast("Estudiante eliminado.");
+        } catch (err) {
+          showToast(`Error al eliminar: ${err.message}`);
         }
       }
     });
   };
-
-  const menuItems = [
-    { name: "Panel de Control", icon: "dashboard", route: "/" },
-    { name: "Horarios", icon: "calendar_today", route: "/schedules" },
-    { name: "Estudiantes", icon: "school", route: "/students" },
-    { name: "Profesores", icon: "person_4", route: "#" },
-    { name: "Facturación", icon: "payments", route: "/billing" },
-  ];
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-inter relative">

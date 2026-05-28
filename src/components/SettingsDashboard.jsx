@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { toast } from "sonner";
+import { supabase } from "@/utils/supabaseClient";
 
 // Definido FUERA del componente para que React no lo recree en cada render
 function ModalWrapper({ onClose, children }) {
@@ -50,11 +51,10 @@ const DURATION_OPTIONS = [
   "12 meses", "Mensual (recurrente)", "Semestral", "Anual",
 ];
 
-const emptyGroup  = { code: "", course: "", teacher: "", schedule: "", capacity: "" };
+const emptyGroup  = { code: "", course: "", teacher_id: "", schedule: "", capacity: "" };
 
 export default function SettingsDashboard() {
   const [activeTab, setActiveTab]       = useState("cursos");
-  const [isLoaded, setIsLoaded]         = useState(false);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // { titleType: '', name: '', onConfirm: fn }
 
   // ── Cursos ──────────────────────────────────────────────────────────────────
@@ -87,48 +87,21 @@ export default function SettingsDashboard() {
     else toast(msg);
   };
 
-  // ── Carga desde localStorage ────────────────────────────────────────────────
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    try {
-      const storedCourses = JSON.parse(localStorage.getItem("ttp_courses_local") || "[]");
-      setCourses(Array.isArray(storedCourses) ? storedCourses : []);
-    } catch { setCourses([]); }
-
-    try {
-      const storedGroups = JSON.parse(localStorage.getItem("ttp_groups_local") || "[]");
-      setGroups(Array.isArray(storedGroups) ? storedGroups : []);
-    } catch { setGroups([]); }
-
-    try {
-      const storedUsers = JSON.parse(localStorage.getItem("ttp_users_local") || "[]");
-      setUsers(Array.isArray(storedUsers) ? storedUsers : []);
-    } catch { setUsers([]); }
-
-    try {
-      const storedTeachers = JSON.parse(localStorage.getItem("ttp_teachers_local") || "[]");
-      setTeachersList(Array.isArray(storedTeachers) ? storedTeachers : []);
-    } catch { setTeachersList([]); }
-
-    setIsLoaded(true);
+    const load = async () => {
+      const [{ data: c }, { data: g }, { data: u }, { data: t }] = await Promise.all([
+        supabase.from("courses").select("*").order("created_at", { ascending: false }),
+        supabase.from("groups").select("*").order("created_at", { ascending: false }),
+        supabase.from("system_users").select("*").order("created_at", { ascending: false }),
+        supabase.from("teachers").select("id, name, email, specialty, status"),
+      ]);
+      if (c) setCourses(c);
+      if (g) setGroups(g);
+      if (u) setUsers(u);
+      if (t) setTeachersList(t);
+    };
+    load();
   }, []);
-
-  // ── Persistencia automática ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem("ttp_courses_local", JSON.stringify(courses));
-  }, [courses, isLoaded]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem("ttp_groups_local", JSON.stringify(groups));
-  }, [groups, isLoaded]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem("ttp_users_local", JSON.stringify(users));
-  }, [users, isLoaded]);
 
   const tabs = [
     { id: "cursos",   label: "Cursos",            icon: "menu_book" },
@@ -137,20 +110,50 @@ export default function SettingsDashboard() {
   ];
 
   // ── Handlers Cursos ─────────────────────────────────────────────────────────
-  const handleAddCourse = (e) => {
+  const handleAddCourse = async (e) => {
     e.preventDefault();
-    setCourses(p => [{ id: `c-${Date.now()}`, ...courseForm, price: Number(courseForm.price), groups: 0, status: "activo" }, ...p]);
-    setAddCourseModal(false); setCourseForm(emptyCourse);
+    const { data, error } = await supabase.from("courses").insert([{
+      name: courseForm.name,
+      level: courseForm.level || "",
+      custom_level: courseForm.customLevel || "",
+      duration_type: courseForm.durationType || "months",
+      duration: courseForm.duration || "",
+      course_start_date: courseForm.courseStartDate || null,
+      course_end_date: courseForm.courseEndDate || null,
+      price: Number(courseForm.price) || 0,
+      class_type: courseForm.classType || "grupal",
+      allowed_teachers: courseForm.allowedTeachers || [],
+      status: "activo",
+    }]).select().single();
+    if (error) { showToast("⛔ Error al crear curso."); return; }
+    setCourses(p => [data, ...p]);
+    setAddCourseModal(false);
+    setCourseForm(emptyCourse);
     showToast("✅ Curso creado exitosamente.");
   };
-  const handleEditCourse = (e) => {
+  const handleEditCourse = async (e) => {
     e.preventDefault();
-    setCourses(p => p.map(c => c.id === editCourseModal.id ? { ...c, ...courseForm, price: Number(courseForm.price) } : c));
+    const { data, error } = await supabase.from("courses").update({
+      name: courseForm.name,
+      level: courseForm.level || "",
+      custom_level: courseForm.customLevel || "",
+      duration_type: courseForm.durationType || "months",
+      duration: courseForm.duration || "",
+      course_start_date: courseForm.courseStartDate || null,
+      course_end_date: courseForm.courseEndDate || null,
+      price: Number(courseForm.price) || 0,
+      class_type: courseForm.classType || "grupal",
+      allowed_teachers: courseForm.allowedTeachers || [],
+    }).eq("id", editCourseModal.id).select().single();
+    if (error) { showToast("⛔ Error al actualizar curso."); return; }
+    setCourses(p => p.map(c => c.id === data.id ? data : c));
     setEditCourseModal(null);
     showToast("✏️ Curso actualizado.");
   };
-  const handleArchiveCourse = (c) => {
+  const handleArchiveCourse = async (c) => {
     const next = c.status === "activo" ? "archivado" : "activo";
+    const { error } = await supabase.from("courses").update({ status: next }).eq("id", c.id);
+    if (error) { showToast("⛔ Error al archivar curso."); return; }
     setCourses(p => p.map(x => x.id === c.id ? { ...x, status: next } : x));
     showToast(next === "archivado" ? `📦 Curso "${c.name}" archivado.` : `✅ Curso "${c.name}" reactivado.`);
   };
@@ -158,9 +161,11 @@ export default function SettingsDashboard() {
     setDeleteConfirmModal({
       titleType: "Curso",
       name: c.name,
-      onConfirm: () => {
+      onConfirm: async () => {
+        const { error } = await supabase.from("courses").delete().eq("id", c.id);
+        if (error) { showToast("⛔ Error al eliminar curso."); return; }
         setCourses(p => p.filter(x => x.id !== c.id));
-        showToast(`🗑️ Curso "${c.name}" de baja/eliminado.`);
+        showToast(`🗑️ Curso "${c.name}" eliminado.`);
       }
     });
   };
@@ -187,15 +192,34 @@ export default function SettingsDashboard() {
   };
 
   // ── Handlers Grupos ─────────────────────────────────────────────────────────
-  const handleAddGroup = (e) => {
+  const handleAddGroup = async (e) => {
     e.preventDefault();
-    setGroups(p => [{ id: `g-${Date.now()}`, ...groupForm, capacity: Number(groupForm.capacity), enrolled: 0, status: "activo" }, ...p]);
-    setAddGroupModal(false); setGroupForm(emptyGroup);
+    const { data, error } = await supabase.from("groups").insert([{
+      code: groupForm.code,
+      course: groupForm.course,
+      teacher_id: groupForm.teacher_id || null,
+      schedule: groupForm.schedule,
+      capacity: Number(groupForm.capacity) || 15,
+      enrolled: 0,
+      status: "activo",
+    }]).select().single();
+    if (error) { showToast("⛔ Error al crear grupo."); return; }
+    setGroups(p => [data, ...p]);
+    setAddGroupModal(false);
+    setGroupForm(emptyGroup);
     showToast("✅ Grupo creado exitosamente.");
   };
-  const handleEditGroup = (e) => {
+  const handleEditGroup = async (e) => {
     e.preventDefault();
-    setGroups(p => p.map(g => g.id === editGroupModal.id ? { ...g, ...groupForm, capacity: Number(groupForm.capacity) } : g));
+    const { data, error } = await supabase.from("groups").update({
+      code: groupForm.code,
+      course: groupForm.course,
+      teacher_id: groupForm.teacher_id || null,
+      schedule: groupForm.schedule,
+      capacity: Number(groupForm.capacity) || 15,
+    }).eq("id", editGroupModal.id).select().single();
+    if (error) { showToast("⛔ Error al actualizar grupo."); return; }
+    setGroups(p => p.map(g => g.id === data.id ? data : g));
     setEditGroupModal(null);
     showToast("✏️ Grupo actualizado.");
   };
@@ -203,7 +227,9 @@ export default function SettingsDashboard() {
     setDeleteConfirmModal({
       titleType: "Grupo",
       name: g.code,
-      onConfirm: () => {
+      onConfirm: async () => {
+        const { error } = await supabase.from("groups").delete().eq("id", g.id);
+        if (error) { showToast("⛔ Error al eliminar grupo."); return; }
         setGroups(p => p.filter(x => x.id !== g.id));
         showToast(`🗑️ Grupo ${g.code} eliminado.`);
       }
@@ -211,14 +237,24 @@ export default function SettingsDashboard() {
   };
 
   // ── Handlers Usuarios ───────────────────────────────────────────────────────
-  const handleAddUser = (e) => {
+  const handleAddUser = async (e) => {
     e.preventDefault();
-    setUsers(p => [{ id: `u-${Date.now()}`, ...userForm, lastLogin: "Nunca", status: "activo" }, ...p]);
-    setAddUserModal(false); setUserForm({ name: "", email: "", role: "Teacher" });
+    const { data, error } = await supabase.from("system_users").insert([{
+      name: userForm.name,
+      email: userForm.email,
+      role: userForm.role,
+      status: "activo",
+    }]).select().single();
+    if (error) { showToast("⛔ Error al crear usuario."); return; }
+    setUsers(p => [data, ...p]);
+    setAddUserModal(false);
+    setUserForm({ name: "", email: "", role: "Teacher" });
     showToast("✅ Usuario creado y acceso habilitado.");
   };
-  const handleToggleUser = (u) => {
+  const handleToggleUser = async (u) => {
     const next = u.status === "activo" ? "inactivo" : "activo";
+    const { error } = await supabase.from("system_users").update({ status: next }).eq("id", u.id);
+    if (error) { showToast("⛔ Error al actualizar usuario."); return; }
     setUsers(p => p.map(x => x.id === u.id ? { ...x, status: next } : x));
     showToast(next === "inactivo" ? `⛔ Acceso de ${u.name} desactivado.` : `✅ Acceso de ${u.name} reactivado.`);
   };
@@ -226,7 +262,9 @@ export default function SettingsDashboard() {
     setDeleteConfirmModal({
       titleType: "Usuario",
       name: u.name,
-      onConfirm: () => {
+      onConfirm: async () => {
+        const { error } = await supabase.from("system_users").delete().eq("id", u.id);
+        if (error) { showToast("⛔ Error al eliminar usuario."); return; }
         setUsers(p => p.filter(x => x.id !== u.id));
         showToast(`🗑️ Usuario "${u.name}" eliminado.`);
       }
@@ -368,7 +406,7 @@ export default function SettingsDashboard() {
                             </div>
                             <div>
                               <p className="font-bold text-slate-800 text-sm">{g.course}</p>
-                              <p className="text-[11px] text-slate-400 font-medium">{g.teacher} · {g.schedule} · {g.enrolled ?? 0}/{g.capacity} alumnos</p>
+                              <p className="text-[11px] text-slate-400 font-medium">{teacherName(g.teacher_id)} · {g.schedule} · {g.enrolled ?? 0}/{g.capacity} alumnos</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -377,7 +415,7 @@ export default function SettingsDashboard() {
                                 <div className={`h-full rounded-full ${(g.enrolled ?? 0) >= g.capacity ? "bg-rose-400" : "bg-teal-400"}`} style={{ width: `${Math.min(((g.enrolled ?? 0) / g.capacity) * 100, 100)}%` }} />
                               </div>
                             </div>
-                            <button onClick={() => { setGroupForm({ code: g.code, course: g.course, teacher: g.teacher, schedule: g.schedule, capacity: g.capacity }); setEditGroupModal(g); }}
+                            <button onClick={() => { setGroupForm({ code: g.code, course: g.course, teacher_id: g.teacher_id || "", schedule: g.schedule, capacity: g.capacity }); setEditGroupModal(g); }}
                               className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
                               <span className="material-symbols-outlined text-base">edit</span>
                             </button>
@@ -880,8 +918,11 @@ export default function SettingsDashboard() {
                 </select>
               </div>
               <div className="col-span-2">
-                <label className={labelCls}>Maestro *</label>
-                <input required value={groupForm.teacher} onChange={e => setGroupForm(p => ({ ...p, teacher: e.target.value }))} className={inputCls} />
+                <label className={labelCls}>Maestro</label>
+                <select value={groupForm.teacher_id} onChange={e => setGroupForm(p => ({ ...p, teacher_id: e.target.value }))} className={inputCls}>
+                  <option value="">— Sin maestro asignado —</option>
+                  {teachersList.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Horario</label>
@@ -934,7 +975,10 @@ export default function SettingsDashboard() {
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Maestro</label>
-                <input value={groupForm.teacher} onChange={e => setGroupForm(p => ({ ...p, teacher: e.target.value }))} className={inputCls} />
+                <select value={groupForm.teacher_id} onChange={e => setGroupForm(p => ({ ...p, teacher_id: e.target.value }))} className={inputCls}>
+                  <option value="">— Sin maestro asignado —</option>
+                  {teachersList.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Horario</label>

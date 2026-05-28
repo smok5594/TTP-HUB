@@ -46,47 +46,17 @@ export default function StudentProfile({ id }) {
   const [formGroups, setFormGroups] = useState([]);
   const [isNationalityDropdownOpen, setIsNationalityDropdownOpen] = useState(false);
 
-  // Cargar maestros y grupos en caliente desde localStorage para los selectores del formulario de edición
+  // Cargar maestros y grupos desde Supabase para los selectores del formulario de edición
   useEffect(() => {
-    const t = typeof window !== "undefined" && localStorage.getItem("ttp_teachers_local");
-    const g = typeof window !== "undefined" && localStorage.getItem("ttp_groups_local");
-    if (t) { try { setFormTeachers(JSON.parse(t)); } catch {} }
-    if (g) { try { setFormGroups(JSON.parse(g)); } catch {} }
-
-    // Sincronizar profesores desde Supabase en caliente
-    const syncTeachersFromDB = async () => {
-      try {
-        const { data, error } = await supabase.from("teachers").select("*");
-        if (error) throw error;
-        if (data && data.length > 0) {
-          const mapped = data.map(t => ({
-            id: t.id,
-            name: t.name,
-            email: t.email || `${t.name.toLowerCase().replace(/\s/g, "")}@ttp.mx`,
-            phone: t.phone || "+52 55 0000 0000",
-            specialty: t.specialty || "Profesor de Inglés",
-            rate: t.rate || 250,
-            since: t.since || "Enero 2024",
-            birthdate: t.birthdate || "",
-            burlington_user: t.burlington_user || "",
-            burlington_pass: t.burlington_pass || "",
-            ttp_user: t.ttp_user || "",
-            ttp_pass: t.ttp_pass || "",
-            classes: t.classes || 0,
-            students: t.students || 0,
-            status: t.status === "active" ? "activo" : "suspendido"
-          }));
-          setFormTeachers(mapped);
-          if (typeof window !== "undefined") {
-            localStorage.setItem("ttp_teachers_local", JSON.stringify(mapped));
-          }
-        }
-      } catch (err) {
-        console.log("Error sincronizando profesores en perfil de alumno:", err);
-      }
+    const loadFormData = async () => {
+      const [{ data: teachersData }, { data: groupsData }] = await Promise.all([
+        supabase.from("teachers").select("id, name, email, specialty, status"),
+        supabase.from("groups").select("id, title, class_type, teacher_id, schedule, capacity"),
+      ]);
+      if (teachersData) setFormTeachers(teachersData);
+      if (groupsData) setFormGroups(groupsData);
     };
-
-    syncTeachersFromDB();
+    loadFormData();
   }, []);
 
 
@@ -118,30 +88,10 @@ export default function StudentProfile({ id }) {
         }));
       }
     } catch (e) {
-      console.warn("Fallo carga de transacciones desde Supabase para alumno. Usando fallback de localStorage.");
+      console.warn("Error cargando transacciones desde Supabase:", e);
     }
 
-    // 2. Si no hay resultados de Supabase o falló, usar localStorage
-    if (matches.length === 0 && typeof window !== "undefined") {
-      const stored = localStorage.getItem("ttp_transactions_local");
-      if (stored) {
-        try {
-          const allTxs = JSON.parse(stored);
-          const filtered = allTxs.filter(t => t.description.toLowerCase().includes(studentObj.name.toLowerCase()));
-          matches = filtered.map(t => ({
-            id: t.id,
-            date: t.date || new Date().toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }),
-            concept: t.description,
-            amount: Number(t.amount),
-            status: t.status === "processed" ? "pagado" : (t.status === "overdue" ? "vencido" : "pendiente"),
-            method: t.status === "processed" ? "Tarjeta / Stripe" : "Por cobrar",
-            reference: t.id
-          }));
-        } catch (err) {}
-      }
-    }
-
-    // 3. Fallback dinámico si no hay ninguna transacción registrada aún
+    // 2. Fallback dinámico si no hay ninguna transacción registrada aún
     if (matches.length === 0) {
       const isMoroso = studentObj.status === "moroso" || studentObj.payment_status === "moroso" || studentObj.payment_status === "pago_fallido";
       const isPaid = studentObj.payment_status === "al_corriente";
@@ -284,75 +234,7 @@ export default function StudentProfile({ id }) {
           fetchStudentPayments(data);
         }
       } catch (err) {
-        console.log("No se pudo cargar el alumno de Supabase (ID no encontrado o sin conexión). Cargando desde localStorage como fallback.");
-        
-        let localStudents = [];
-        if (typeof window !== "undefined") {
-          const stored = localStorage.getItem("ttp_students_local");
-          if (stored) {
-            try { localStudents = JSON.parse(stored); } catch {}
-          }
-        }
-        
-        const found = localStudents.find(s => s.id === id);
-        if (found) {
-          // Auto-curación: verificar si este correo pertenece a un docente
-          let teacherEmails = ["e.valdez@ttp.mx", "m.johnson@ttp.mx", "c.rios@ttp.mx", "r.salas@ttp.mx"];
-          const storedTeachers = localStorage.getItem("ttp_teachers_local");
-          if (storedTeachers) {
-            try {
-              const teachers = JSON.parse(storedTeachers);
-              const fetchedEmails = teachers.map(t => t.email && t.email.toLowerCase()).filter(Boolean);
-              if (fetchedEmails.length > 0) teacherEmails = fetchedEmails;
-            } catch (e) {}
-          }
-
-          if (found.email && teacherEmails.includes(found.email.toLowerCase())) {
-            const cleanedList = localStudents.filter(s => s.id !== found.id);
-            localStorage.setItem("ttp_students_local", JSON.stringify(cleanedList));
-            showToast("⚠️ Registro inválido de maestro detectado como alumno. Limpiando expediente...");
-            setTimeout(() => { window.location.href = "/students"; }, 1500);
-            return;
-          }
-          setStudent(found);
-          fetchStudentPayments(found);
-        } else {
-          // Fallback robusto con los datos exactos del screenshot
-          const fallbackStudent = {
-            id: id || "local-1",
-            name: "Elena",
-            last_name: "Rodríguez",
-            email: "elena.rod@email.com",
-            status: "active",
-            current_course: "English B2 - Advanced",
-            current_group: "Grupo B2-Avanzado",
-            class_type: "grupal",
-            schedule: "Lunes y Miércoles 17:00–18:30",
-            teacher: "James Wilson",
-            enrolled_date: "2022-01-15",
-            next_payment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            phone: "+52 55 9876 5432",
-            birthdate: "24 de Septiembre, 1998",
-            address: "Av. Universidad 123, Ciudad de México, CP 04510",
-            nationality: "Mexicana",
-            occupation: "Estudiante de Licenciatura",
-            amount_due: 0,
-            payment_reference: "REF-ROD-2022",
-            last_payment_date: "2023-09-15",
-            payment_status: "al_corriente",
-            suspension_date: null,
-            suspension_reason: null,
-            course_history: [
-              { course: "English A1 – Beginner", period: "Ene 2022 – Jun 2022", status: "completado" }
-            ],
-            admin_notes: "Alumna puntual. Excelente compromiso escolar.",
-            academic_notes: "Excelente gramática.",
-            burlington_user: "elena.rodriguez@ttp",
-            certificates_issued: 1,
-          };
-          setStudent(fallbackStudent);
-          fetchStudentPayments(fallbackStudent);
-        }
+        console.log("No se pudo cargar el alumno de Supabase:", err);
       } finally {
         setIsLoading(false);
       }
@@ -360,19 +242,6 @@ export default function StudentProfile({ id }) {
 
     fetchStudentData();
   }, [id]);
-
-  const saveLocalStudent = (updated) => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("ttp_students_local");
-      if (stored) {
-        try {
-          const list = JSON.parse(stored);
-          const upd = list.map(s => s.id === updated.id ? updated : s);
-          localStorage.setItem("ttp_students_local", JSON.stringify(upd));
-        } catch (e) {}
-      }
-    }
-  };
 
   const handleOpenEditModal = () => {
     if (!student) return;
@@ -413,18 +282,9 @@ export default function StudentProfile({ id }) {
       return;
     }
 
-    // Auto-curación preventiva: verificar si este correo pertenece a un docente
-    let teacherEmails = ["e.valdez@ttp.mx", "m.johnson@ttp.mx", "c.rios@ttp.mx", "r.salas@ttp.mx"];
-    const storedTeachers = localStorage.getItem("ttp_teachers_local");
-    if (storedTeachers) {
-      try {
-        const teachers = JSON.parse(storedTeachers);
-        const fetchedEmails = teachers.map(t => t.email && t.email.toLowerCase()).filter(Boolean);
-        if (fetchedEmails.length > 0) teacherEmails = fetchedEmails;
-      } catch (err) {}
-    }
-
-    if (teacherEmails.includes(editForm.email.toLowerCase())) {
+    // Preventivo: verificar si este correo pertenece a un docente cargado
+    const teacherEmails = formTeachers.map(t => t.email?.toLowerCase()).filter(Boolean);
+    if (teacherEmails.length > 0 && teacherEmails.includes(editForm.email.toLowerCase())) {
       showToast("❌ Error: Este correo pertenece a un docente y no puede registrarse como alumno.");
       return;
     }
@@ -459,43 +319,36 @@ export default function StudentProfile({ id }) {
       updated.suspension_reason = "Dado de baja por inactividad o administración";
     }
 
+    await supabase.from("students").update({
+      name: updated.name,
+      last_name: updated.last_name,
+      email: updated.email,
+      phone: updated.phone,
+      birthdate: updated.birthdate,
+      enrolled_date: updated.enrolled_date,
+      nationality: updated.nationality,
+      occupation: updated.occupation,
+      address: updated.address,
+      status: updated.status,
+      status_mode: updated.status_mode,
+      last_connection_date: updated.last_connection_date,
+      payment_status: updated.payment_status,
+      current_course: updated.current_course,
+      current_group: updated.current_group,
+      class_type: updated.class_type,
+      teacher: updated.teacher,
+      schedule: updated.schedule,
+      amount_due: updated.amount_due,
+      payment_reference: updated.payment_reference,
+      last_payment_date: updated.last_payment_date,
+      next_payment: updated.next_payment,
+      burlington_user: updated.burlington_user,
+      admin_notes: updated.admin_notes,
+      academic_notes: updated.academic_notes
+    }).eq("id", updated.id);
     setStudent(updated);
-    saveLocalStudent(updated);
     setIsEditModalOpen(false);
     showToast("✅ Datos del estudiante actualizados exitosamente.");
-
-    // Sincronizar en Supabase si está disponible
-    try {
-      await supabase.from("students").update({
-        name: updated.name,
-        last_name: updated.last_name,
-        email: updated.email,
-        phone: updated.phone,
-        birthdate: updated.birthdate,
-        enrolled_date: updated.enrolled_date,
-        nationality: updated.nationality,
-        occupation: updated.occupation,
-        address: updated.address,
-        status: updated.status,
-        status_mode: updated.status_mode,
-        last_connection_date: updated.last_connection_date,
-        payment_status: updated.payment_status,
-        current_course: updated.current_course,
-        current_group: updated.current_group,
-        class_type: updated.class_type,
-        teacher: updated.teacher,
-        schedule: updated.schedule,
-        amount_due: updated.amount_due,
-        payment_reference: updated.payment_reference,
-        last_payment_date: updated.last_payment_date,
-        next_payment: updated.next_payment,
-        burlington_user: updated.burlington_user,
-        admin_notes: updated.admin_notes,
-        academic_notes: updated.academic_notes
-      }).eq("id", updated.id);
-    } catch (err) {
-      console.log("Supabase update bypassed.");
-    }
   };
 
   // Simulación de emisión de constancia
@@ -1611,17 +1464,8 @@ export default function StudentProfile({ id }) {
             </div>
             <div className="flex gap-3">
               <button onClick={() => { setStudentCrudModal(null); setDeleteConfirmText(""); }} className="flex-1 py-2.5 border border-slate-200 text-slate-500 rounded-xl font-semibold text-sm hover:bg-slate-50 transition-all">Cancelar</button>
-              <button disabled={deleteConfirmText !== student?.name} onClick={() => {
-                if (typeof window !== "undefined") {
-                  const stored = localStorage.getItem("ttp_students_local");
-                  if (stored) {
-                    try {
-                      const list = JSON.parse(stored);
-                      const upd = list.filter(s => s.id !== student.id);
-                      localStorage.setItem("ttp_students_local", JSON.stringify(upd));
-                    } catch (e) {}
-                  }
-                }
+              <button disabled={deleteConfirmText !== student?.name} onClick={async () => {
+                await supabase.from("students").delete().eq("id", student.id);
                 showToast(`🗑️ Alumno ${student?.name} eliminado del sistema.`);
                 setStudentCrudModal(null);
                 setTimeout(() => { window.location.href = "/students"; }, 1500);

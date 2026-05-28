@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { toast } from "sonner";
+import { supabase } from "@/utils/supabaseClient";
 
 export default function SchedulesDashboard() {
   // Estado para la búsqueda
@@ -88,7 +89,6 @@ export default function SchedulesDashboard() {
   const [attendance, setAttendance] = useState({});
 
   const [isMeetGenerating, setIsMeetGenerating] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
 
   // Lista de profesores dinámicos de la base de datos
   const [teachersList, setTeachersList] = useState([]);
@@ -99,82 +99,42 @@ export default function SchedulesDashboard() {
   // Alumnos para calcular alertas de pago automáticamente
   const [students, setStudents] = useState([]);
 
-  // Cargar de localStorage en el montaje
+  // Disponibilidad de profesores desde la base de datos
+  const [teacherAvailability, setTeacherAvailability] = useState([]);
+
+  // Cargar datos desde Supabase en el montaje
   React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      // Inicializar fechas por defecto del formulario de forma segura en Next.js
-      setNewClass(prev => ({
-        ...prev,
-        startDate: getMonDateStr(),
-        endDate: getEndCourseDateStr()
-      }));
+    // Inicializar fechas por defecto del formulario de forma segura en Next.js
+    setNewClass(prev => ({
+      ...prev,
+      startDate: getMonDateStr(),
+      endDate: getEndCourseDateStr()
+    }));
 
-      const storedClasses = localStorage.getItem("ttp_schedules_local");
-      const storedAtt = localStorage.getItem("ttp_attendance_local");
-      const storedTeachers = localStorage.getItem("ttp_teachers_local");
-      const storedCourses = localStorage.getItem("ttp_courses_local");
+    const loadData = async () => {
+      const [
+        { data: teachersData },
+        { data: coursesData },
+        { data: studentsData },
+        { data: schedulesData },
+        { data: availabilityData },
+      ] = await Promise.all([
+        supabase.from("teachers").select("id, name, specialty, status"),
+        supabase.from("courses").select("id, name, level, status").eq("status", "activo"),
+        supabase.from("students").select("id, name, last_name, status, current_group, current_course"),
+        supabase.from("schedules").select("*"),
+        supabase.from("teacher_availability").select("*"),
+      ]);
 
-      if (storedTeachers) {
-        try {
-          let parsed = JSON.parse(storedTeachers);
-          // Purgar docentes mock predeterminados ("t-001", "t-002", "t-003" o nombres mock)
-          const mockTeacherIds = ["t-001", "t-002", "t-003"];
-          const mockNames = ["Lic. Elena Valdéz", "Mark W. Johnson", "Dra. Carmen Ríos"];
-          parsed = parsed.filter(t => !mockTeacherIds.includes(t.id) && !mockNames.includes(t.name));
-          setTeachersList(parsed);
-          localStorage.setItem("ttp_teachers_local", JSON.stringify(parsed));
-        } catch (e) {}
-      }
+      if (teachersData) setTeachersList(teachersData);
+      if (coursesData) setCoursesCatalog(coursesData);
+      if (studentsData) setStudents(studentsData);
+      if (schedulesData) setClasses(schedulesData);
+      if (availabilityData) setTeacherAvailability(availabilityData);
+    };
 
-      if (storedCourses) {
-        try {
-          const parsedCourses = JSON.parse(storedCourses);
-          setCoursesCatalog(Array.isArray(parsedCourses) ? parsedCourses.filter(c => c.status === "activo") : []);
-        } catch (e) {}
-      }
-
-      const storedStudents = localStorage.getItem("ttp_students_local");
-      if (storedStudents) {
-        try { setStudents(JSON.parse(storedStudents)); } catch (e) {}
-      }
-
-      if (storedClasses) {
-        try {
-          let parsed = JSON.parse(storedClasses);
-          // Auto-limpieza de clases mock obsoletas (IDs c1 a c7)
-          const mockIds = ["c1", "c2", "c3", "c4", "c5", "c6", "c7"];
-          parsed = parsed.filter(c => !mockIds.includes(c.id));
-          setClasses(parsed);
-          localStorage.setItem("ttp_schedules_local", JSON.stringify(parsed));
-        } catch (e) {}
-      }
-      if (storedAtt) {
-        try {
-          let parsedAtt = JSON.parse(storedAtt);
-          const mockIds = ["c1", "c2", "c3", "c4", "c5", "c6", "c7"];
-          mockIds.forEach(id => {
-            delete parsedAtt[id];
-          });
-          setAttendance(parsedAtt);
-          localStorage.setItem("ttp_attendance_local", JSON.stringify(parsedAtt));
-        } catch (e) {}
-      }
-      setIsLoaded(true);
-    }
+    loadData();
   }, []);
-
-  // Guardar en localStorage ante cambios
-  React.useEffect(() => {
-    if (isLoaded && typeof window !== "undefined") {
-      localStorage.setItem("ttp_schedules_local", JSON.stringify(classes));
-    }
-  }, [classes, isLoaded]);
-
-  React.useEffect(() => {
-    if (isLoaded && typeof window !== "undefined") {
-      localStorage.setItem("ttp_attendance_local", JSON.stringify(attendance));
-    }
-  }, [attendance, isLoaded]);
 
   // Alumnos morosos/pendientes por clase — calculado automáticamente
   const DEBT_STATUSES = ["moroso", "pendiente", "pago_fallido"];
@@ -245,27 +205,10 @@ export default function SchedulesDashboard() {
 
   const checkAvailabilityConflict = (teacherName, days, startTime, endTime) => {
     if (!teacherName) return null;
-    const storedTeachers = localStorage.getItem("ttp_teachers_local");
-    if (!storedTeachers) return null;
-    let parsedTeachers = [];
-    try {
-      parsedTeachers = JSON.parse(storedTeachers);
-    } catch (e) {
-      return null;
-    }
-    const teacher = parsedTeachers.find(t => t.name === teacherName);
+    const teacher = teachersList.find(t => t.name === teacherName);
     if (!teacher) return null;
 
-    const storedBlocks = localStorage.getItem("ttp_teachers_availability");
-    if (!storedBlocks) return null;
-    let blocks = [];
-    try {
-      blocks = JSON.parse(storedBlocks);
-    } catch (e) {
-      return null;
-    }
-
-    const teacherBlocks = blocks.filter(b => b.teacherId === teacher.id);
+    const teacherBlocks = teacherAvailability.filter(b => b.teacherId === teacher.id || b.teacher_id === teacher.id);
     if (teacherBlocks.length === 0) return null;
 
     const toMin = t => {
@@ -416,22 +359,6 @@ export default function SchedulesDashboard() {
 
   // Abrir modal de agendar de forma general
   const handleOpenAddClassModal = () => {
-    if (typeof window !== "undefined") {
-      const storedTeachers = localStorage.getItem("ttp_teachers_local");
-      if (storedTeachers) {
-        try {
-          const parsed = JSON.parse(storedTeachers);
-          setTeachersList(Array.isArray(parsed) ? parsed : []);
-        } catch (e) {}
-      }
-      const storedCourses = localStorage.getItem("ttp_courses_local");
-      if (storedCourses) {
-        try {
-          const parsed = JSON.parse(storedCourses);
-          setCoursesCatalog(Array.isArray(parsed) ? parsed.filter(c => c.status === "activo") : []);
-        } catch (e) {}
-      }
-    }
     setNewClass({
       title: "",
       daysSelected: ["LUN"],
@@ -471,22 +398,6 @@ export default function SchedulesDashboard() {
 
   // Abrir modal de agendar desde una celda del calendario con día y hora pre-llenados
   const handleOpenCellModal = (day, slot) => {
-    if (typeof window !== "undefined") {
-      const storedTeachers = localStorage.getItem("ttp_teachers_local");
-      if (storedTeachers) {
-        try {
-          const parsed = JSON.parse(storedTeachers);
-          setTeachersList(Array.isArray(parsed) ? parsed : []);
-        } catch (e) {}
-      }
-      const storedCourses = localStorage.getItem("ttp_courses_local");
-      if (storedCourses) {
-        try {
-          const parsed = JSON.parse(storedCourses);
-          setCoursesCatalog(Array.isArray(parsed) ? parsed.filter(c => c.status === "activo") : []);
-        } catch (e) {}
-      }
-    }
     const defaultEnd = slot === "08:00" ? "09:30" : slot === "10:00" ? "11:30" : "13:30";
     setNewClass(prev => ({
       ...prev,
@@ -618,36 +529,15 @@ export default function SchedulesDashboard() {
     };
   };
 
-  const updateTeacherHours = (teacherName, hours) => {
-    if (typeof window === "undefined") return;
-    const stored = localStorage.getItem("ttp_teachers_local");
-    if (!stored) return;
-    try {
-      const list = JSON.parse(stored);
-      const match = list.find(t => 
-        t.name.toLowerCase().includes(teacherName.toLowerCase()) || 
-        teacherName.toLowerCase().includes(t.name.toLowerCase()) ||
-        t.name.toLowerCase().replace(/\s/g, "").includes(teacherName.toLowerCase().split(" ")[0])
-      );
-      if (match) {
-        match.completed_hours = (match.completed_hours || 0) + hours;
-        localStorage.setItem("ttp_teachers_local", JSON.stringify(list));
-      } else {
-        const newT = {
-          id: `t-${Date.now()}`,
-          name: teacherName,
-          specialty: "English Instructor",
-          status: "active",
-          class_types: ["grupal"],
-          max_students: 15,
-          completed_hours: hours
-        };
-        list.push(newT);
-        localStorage.setItem("ttp_teachers_local", JSON.stringify(list));
-      }
-    } catch (e) {
-      console.error(e);
-    }
+  const updateTeacherHours = async (teacherName, hours) => {
+    const teacher = teachersList.find(t =>
+      t.name.toLowerCase().includes(teacherName.toLowerCase()) ||
+      teacherName.toLowerCase().includes(t.name.toLowerCase())
+    );
+    if (!teacher) return;
+    const newCompleted = (teacher.completed_hours || 0) + hours;
+    await supabase.from("teachers").update({ completed_hours: newCompleted }).eq("id", teacher.id);
+    setTeachersList(prev => prev.map(t => t.id === teacher.id ? { ...t, completed_hours: newCompleted } : t));
   };
 
   const handleTeacherCheckIn = (classId) => {
@@ -679,7 +569,7 @@ export default function SchedulesDashboard() {
     }
   };
 
-  const handleTeacherCheckOut = (cObj) => {
+  const handleTeacherCheckOut = async (cObj) => {
     const scheduledDuration = getClassDuration(cObj.time);
     const penalty = getLateCheckInPenalty(cObj.slot, cObj.checkInTime);
     const finalDuration = Math.max(0, Number((scheduledDuration - penalty).toFixed(2)));

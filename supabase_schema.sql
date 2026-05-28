@@ -103,7 +103,72 @@ CREATE TABLE teacher_availability (
     description TEXT DEFAULT ''
 );
 
--- 8. RECENT ACTIVITIES TABLE
+-- 8. COURSES TABLE
+CREATE TABLE courses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    level VARCHAR(50) DEFAULT '',
+    custom_level VARCHAR(100) DEFAULT '',
+    duration_type VARCHAR(20) DEFAULT 'months',
+    duration VARCHAR(100) DEFAULT '',
+    course_start_date DATE,
+    course_end_date DATE,
+    price NUMERIC(10,2) DEFAULT 0,
+    class_type VARCHAR(50) DEFAULT 'grupal',
+    allowed_teachers JSONB DEFAULT '[]',
+    status VARCHAR(20) DEFAULT 'activo',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 9. GROUPS TABLE
+CREATE TABLE groups (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(100) NOT NULL,
+    course VARCHAR(255) DEFAULT '',
+    teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL,
+    schedule VARCHAR(255) DEFAULT '',
+    capacity INTEGER DEFAULT 15,
+    enrolled INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'activo',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 10. SCHEDULES TABLE
+CREATE TABLE schedules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title VARCHAR(255) NOT NULL,
+    teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL,
+    group_name VARCHAR(255) DEFAULT '',
+    level VARCHAR(100) DEFAULT '',
+    days_selected JSONB DEFAULT '[]',
+    start_time VARCHAR(10) DEFAULT '08:00',
+    end_time VARCHAR(10) DEFAULT '09:00',
+    start_date DATE,
+    end_date DATE,
+    capacity INTEGER DEFAULT 15,
+    class_type VARCHAR(50) DEFAULT 'grupal',
+    status VARCHAR(50) DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 11. SYSTEM USERS TABLE
+CREATE TABLE system_users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    role VARCHAR(50) DEFAULT 'Teacher',
+    status VARCHAR(20) DEFAULT 'activo',
+    last_login TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- Extend billing_transactions with student link
+ALTER TABLE billing_transactions ADD COLUMN student_id UUID REFERENCES students(id) ON DELETE SET NULL;
+ALTER TABLE billing_transactions ADD COLUMN student_name VARCHAR(255) DEFAULT '';
+ALTER TABLE billing_transactions ADD COLUMN type VARCHAR(50) DEFAULT 'payment';
+ALTER TABLE billing_transactions ADD COLUMN method VARCHAR(50) DEFAULT 'Efectivo';
+
+-- 12. RECENT ACTIVITIES TABLE
 CREATE TABLE recent_activities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,

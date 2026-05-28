@@ -31,7 +31,10 @@ export default function TeachersDashboard() {
     try {
       const { data: teachersData, error } = await supabase.from("teachers").select("*");
       if (error) throw error;
-      if (!teachersData || teachersData.length === 0) return;
+      if (!teachersData || teachersData.length === 0) {
+        setTeachers([]);
+        return;
+      }
       const { data: classesData } = await supabase.from("classes").select("teacher_id");
       const { data: studentsData } = await supabase.from("students").select("teacher");
       const mapped = teachersData.map(t => ({
@@ -61,7 +64,10 @@ export default function TeachersDashboard() {
     try {
       const { data, error } = await supabase.from("teacher_availability").select("*");
       if (error) throw error;
-      if (!data) return;
+      if (!data || data.length === 0) {
+        setAvailabilityBlocks([]);
+        return;
+      }
       setAvailabilityBlocks(data.map(b => ({
         id: b.id,
         teacherId: b.teacher_id,

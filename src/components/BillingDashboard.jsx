@@ -137,25 +137,6 @@ export default function BillingDashboard() {
   const [selectedStudentForSim, setSelectedStudentForSim] = useState("");
   const [webhookEventType, setWebhookEventType] = useState("invoice.payment_succeeded");
   const [isStripeSimulating, setIsStripeSimulating] = useState(false);
-  const [isTxLoaded, setIsTxLoaded] = useState(false);
-
-  // Cargar transacciones de localStorage en el montaje
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("ttp_transactions_local");
-      if (stored) {
-        try { setTransactions(JSON.parse(stored)); } catch (e) {}
-      }
-      setIsTxLoaded(true);
-    }
-  }, []);
-
-  // Guardar transacciones en localStorage ante cambios
-  useEffect(() => {
-    if (isTxLoaded && typeof window !== "undefined" && transactions.length > 0) {
-      localStorage.setItem("ttp_transactions_local", JSON.stringify(transactions));
-    }
-  }, [transactions, isTxLoaded]);
 
   // Mostrar mensaje Toast
   const showToast = (msg) => {
@@ -167,54 +148,14 @@ export default function BillingDashboard() {
     else toast(msg);
   };
 
-  // Sincronizar y filtrar dinámicamente las transacciones con los alumnos existentes
-  const syncTransactionsWithLocalStudents = (loadedTxs) => {
-    if (typeof window === "undefined") return loadedTxs;
-
-    const storedStudents = localStorage.getItem("ttp_students_local");
-    let localStudents = [];
-    if (storedStudents) {
-      try {
-        localStudents = JSON.parse(storedStudents);
-      } catch (e) {}
-    }
-
-    // 1. Filtrar las transacciones para conservar únicamente las de alumnos que existen en ttp_students_local
-    let filtered = loadedTxs.filter((t) => {
-      const lastDash = t.description.lastIndexOf(" - ");
-      if (lastDash === -1) return false;
-      const studentNameInTx = t.description.substring(lastDash + 3).trim().toLowerCase();
-      return localStudents.some((s) => {
-        const fullName = `${s.name} ${s.last_name || ""}`.trim().toLowerCase();
-        return studentNameInTx === fullName || studentNameInTx === s.name.trim().toLowerCase();
-      });
-    });
-
-    // 2. Las transacciones no se auto-generan para que el sistema inicie en $0 por defecto.
-    // Solo se registran transacciones reales de pagos simulados con Stripe o ajustes.
-    localStorage.setItem("ttp_transactions_local", JSON.stringify(filtered));
-    return filtered;
-  };
-
-  // Carga de transacciones financieras
+  // Carga de transacciones financieras desde Supabase
   const fetchTransactions = async () => {
     setIsLoading(true);
-    let loadedTxs = [];
-
-    // Para evitar cargar registros de prueba pregrabados en la base de datos y asegurar un inicio en $0 con datos 100% reales,
-    // cargamos las transacciones exclusivamente desde localStorage (donde se guardan los pagos reales del simulador).
-    const stored = typeof window !== "undefined" && localStorage.getItem("ttp_transactions_local");
-    if (stored) {
-      try {
-        loadedTxs = JSON.parse(stored);
-      } catch {
-        loadedTxs = [];
-      }
-    }
-
-    // Sincronizar y filtrar dinámicamente con los alumnos de ttp_students_local
-    const syncedTxs = syncTransactionsWithLocalStudents(loadedTxs);
-    setTransactions(syncedTxs);
+    const { data } = await supabase
+      .from("billing_transactions")
+      .select("*")
+      .order("created_at", { ascending: false });
+    setTransactions(data || []);
     setIsLoading(false);
   };
 
@@ -256,49 +197,17 @@ export default function BillingDashboard() {
     }
   };
 
-  // Cargar estudiantes desde Supabase o localStorage para la simulación de Stripe
+  // Cargar estudiantes desde Supabase para la simulación de Stripe
   const fetchStudentsForSim = async () => {
-    // Intentar cargar de localStorage primero (fuente de verdad offline del administrador)
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("ttp_students_local");
-      if (stored) {
-        try {
-          const localStudents = JSON.parse(stored);
-          if (localStudents.length > 0) {
-            const mapped = localStudents.map(s => ({
-              id: s.id,
-              name: `${s.name} ${s.last_name || ""}`.trim(),
-              email: s.email || "",
-              status: s.status || "active",
-              amount_due: s.amount_due !== undefined ? Number(s.amount_due) : 2450.00,
-              burlington_user: s.burlington_user || "",
-              enrolled_date: s.enrolled_date || ""
-            }));
-            setStudentsList(mapped);
-            setSelectedStudentForSim(mapped[0]?.id || "");
-            return;
-          }
-        } catch (e) {}
-      }
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from("students")
-        .select("id, name, email, status, amount_due, burlington_user, enrolled_date");
-      if (error) throw error;
-      if (data && data.length > 0) {
-        setStudentsList(data);
-        setSelectedStudentForSim(data[0]?.id || "");
-      } else {
-        throw new Error("Sin datos");
-      }
-    } catch (err) {
-      console.warn("Fallo carga de estudiantes en Supabase para el simulador de Stripe.");
-      const mockStudents = [];
-      setStudentsList(mockStudents);
-      setSelectedStudentForSim("");
-    }
+    const { data } = await supabase
+      .from("students")
+      .select("id, name, last_name, email, status, amount_due, payment_status, burlington_user, enrolled_date");
+    const mapped = (data || []).map(s => ({
+      ...s,
+      name: `${s.name} ${s.last_name || ""}`.trim(),
+    }));
+    setStudentsList(mapped);
+    setSelectedStudentForSim(mapped[0]?.id || "");
   };
 
   // Disparar Webhook de Stripe
@@ -607,66 +516,24 @@ export default function BillingDashboard() {
   // Autocompletar transacciones de prueba
   const handleSeedTransactions = async () => {
     setIsLoading(true);
-    const stored = typeof window !== "undefined" && localStorage.getItem("ttp_students_local");
-    let localStudents = [];
-    if (stored) {
-      try {
-        localStudents = JSON.parse(stored);
-      } catch (e) {}
-    }
-
-    if (localStudents.length === 0) {
+    if (studentsList.length === 0) {
       showToast("⚠️ Registra un estudiante primero para sembrar sus facturas.");
       setIsLoading(false);
       return;
     }
-
     try {
-      const seedData = localStudents.map(s => {
-        const isMoroso = s.status === "moroso" || s.payment_status === "moroso" || s.payment_status === "pago_fallido";
-        const isPaid = s.payment_status === "al_corriente";
-        const amt = s.amount_due !== undefined ? Number(s.amount_due) : 2450.00;
-        const fullName = `${s.name} ${s.last_name || ""}`.trim();
-        
-        return {
-          description: `Colegiatura Mensual - ${fullName}`,
-          amount: amt,
-          status: isMoroso ? "overdue" : (isPaid ? "processed" : "pending"),
-          category: "Colegiatura Mensual"
-        };
-      });
-
+      const seedData = studentsList.map(s => ({
+        description: `Colegiatura Mensual - ${s.name}`,
+        amount: Number(s.amount_due || 2450),
+        status: (s.status === "moroso" || s.payment_status === "moroso") ? "overdue" : s.payment_status === "al_corriente" ? "processed" : "pending",
+        category: "Colegiatura Mensual"
+      }));
       const { error } = await supabase.from("billing_transactions").insert(seedData);
       if (error) throw error;
-
-      showToast("¡Transacciones financieras de tus estudiantes sembradas en Supabase!");
+      showToast("✅ Transacciones de tus estudiantes sembradas en Supabase.");
       fetchTransactions();
     } catch (err) {
-      console.warn("Fallo el sembrado en Supabase. Cargando de forma local.");
-      
-      const newTxs = localStudents.map(s => {
-        const isMoroso = s.status === "moroso" || s.payment_status === "moroso" || s.payment_status === "pago_fallido";
-        const isPaid = s.payment_status === "al_corriente";
-        const amt = s.amount_due !== undefined ? Number(s.amount_due) : 2450.00;
-        const fullName = `${s.name} ${s.last_name || ""}`.trim();
-        
-        return {
-          id: `t-seed-${s.id}-${Date.now()}`,
-          description: `Colegiatura Mensual - ${fullName}`,
-          amount: amt,
-          status: isMoroso ? "overdue" : (isPaid ? "processed" : "pending"),
-          category: "Colegiatura Mensual",
-          date: new Date(s.enrolled_date || Date.now()).toLocaleDateString("es-ES", {
-            day: "numeric",
-            month: "short",
-            year: "numeric"
-          })
-        };
-      });
-
-      localStorage.setItem("ttp_transactions_local", JSON.stringify(newTxs));
-      fetchTransactions();
-      showToast("¡Sincronizados los cobros reales de tus estudiantes!");
+      showToast("⛔ Error al sembrar transacciones.");
     } finally {
       setIsLoading(false);
     }

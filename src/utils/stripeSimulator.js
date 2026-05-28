@@ -46,121 +46,46 @@ export async function handleMockWebhookEvent(eventType, payload, showToast, refr
   const studentEmail = payload.studentEmail || "student@email.com";
   const amount = Number(payload.amount) || 2450.00;
 
-  // Función interna para actualizar el estado offline en localStorage
-  const updateLocalState = (isSuccess) => {
-    if (typeof window === "undefined") return;
-
-    // 1. Actualizar el alumno en ttp_students_local
-    const storedStudents = localStorage.getItem("ttp_students_local");
-    if (storedStudents && payload.studentId) {
-      try {
-        const students = JSON.parse(storedStudents);
-        const updatedStudents = students.map(s => {
-          if (s.id === payload.studentId) {
-            return {
-              ...s,
-              status: isSuccess ? "active" : "moroso",
-              payment_status: isSuccess ? "al_corriente" : "pago_fallido",
-              amount_due: isSuccess ? 0 : amount,
-              last_payment_date: isSuccess ? new Date().toISOString().split("T")[0] : s.last_payment_date
-            };
-          }
-          return s;
-        });
-        localStorage.setItem("ttp_students_local", JSON.stringify(updatedStudents));
-      } catch (e) {
-        console.error("Error updating local students in webhook simulation:", e);
-      }
-    }
-
-    // 2. Agregar la transacción correspondiente en ttp_transactions_local
-    const storedTransactions = localStorage.getItem("ttp_transactions_local");
-    let transactions = [];
-    if (storedTransactions) {
-      try {
-        transactions = JSON.parse(storedTransactions);
-      } catch (e) {}
-    }
-
-    const newTx = {
-      id: `t-webhook-${Date.now()}`,
-      description: isSuccess 
-        ? `Pago en Línea Stripe - Colegiatura - ${studentName}` 
-        : `Pago Fallido Stripe - Colegiatura - ${studentName}`,
-      amount: amount,
-      status: isSuccess ? "processed" : "overdue",
-      category: "Colegiatura Mensual",
-      date: new Date().toLocaleDateString("es-ES", {
-        day: "numeric",
-        month: "short",
-        year: "numeric"
-      })
-    };
-
-    transactions = [newTx, ...transactions];
-    localStorage.setItem("ttp_transactions_local", JSON.stringify(transactions));
-  };
-
   if (eventType === "invoice.payment_succeeded") {
-    // 1. Registrar la transacción en la tabla billing_transactions en Supabase
     try {
-      const { error: insertErr } = await supabase
-        .from("billing_transactions")
-        .insert([
-          {
-            description: `Pago en Línea Stripe - Colegiatura - ${studentName}`,
-            amount: amount,
-            status: "processed",
-            category: "Colegiatura Mensual"
-          }
-        ]);
-      
+      const { error: insertErr } = await supabase.from("billing_transactions").insert([{
+        description: `Pago en Línea Stripe - Colegiatura - ${studentName}`,
+        amount,
+        status: "processed",
+        category: "Colegiatura Mensual",
+        student_id: payload.studentId || null,
+        student_name: studentName,
+        type: "payment",
+        method: "Stripe"
+      }]);
       if (insertErr) throw insertErr;
 
-      // 2. Actualizar el estatus del alumno a "active"
       if (payload.studentId) {
-        const { error: updateErr } = await supabase
-          .from("students")
-          .update({
-            status: "active",
-            amount_due: 0.00,
-            last_payment_date: new Date().toISOString().split("T")[0]
-          })
-          .eq("id", payload.studentId);
-
-        if (updateErr) throw updateErr;
+        await supabase.from("students").update({
+          status: "active",
+          payment_status: "al_corriente",
+          amount_due: 0,
+          last_payment_date: new Date().toISOString().split("T")[0]
+        }).eq("id", payload.studentId);
       }
 
-      // Sincronizar localmente también por consistencia
-      updateLocalState(true);
       showToast(`⚡ Webhook Stripe: Pago de $${amount} de ${studentName} registrado con éxito.`);
     } catch (err) {
-      console.warn("Error en actualización de base de datos de Supabase. Aplicando Simulación local exitosa.");
-      updateLocalState(true);
-      showToast(`⚡ Webhook Stripe (Simulado): Pago de $${amount} de ${studentName} aprobado.`);
+      showToast(`⛔ Error al registrar pago Stripe: ${err.message}`);
     }
 
   } else if (eventType === "invoice.payment_failed") {
-    // 1. Actualizar el estatus del alumno a "moroso" en la base de datos
     try {
       if (payload.studentId) {
-        const { error: updateErr } = await supabase
-          .from("students")
-          .update({
-            status: "moroso",
-            amount_due: amount
-          })
-          .eq("id", payload.studentId);
-
-        if (updateErr) throw updateErr;
+        await supabase.from("students").update({
+          status: "moroso",
+          payment_status: "moroso",
+          amount_due: amount
+        }).eq("id", payload.studentId);
       }
-      
-      updateLocalState(false);
       showToast(`⚠️ Webhook Stripe: Pago fallido por $${amount} de ${studentName}. Alumno marcado como moroso.`);
     } catch (err) {
-      console.warn("Fallo actualización local de webhook para pago fallido.");
-      updateLocalState(false);
-      showToast(`⚠️ Webhook Stripe (Simulado): Pago fallido por $${amount} de ${studentName}.`);
+      showToast(`⛔ Error al registrar pago fallido: ${err.message}`);
     }
   }
 

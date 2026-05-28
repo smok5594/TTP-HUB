@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
+import { supabase } from "@/utils/supabaseClient";
 
 const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const currentMonth = months[new Date().getMonth()];
@@ -36,18 +37,17 @@ export default function ReportsDashboard() {
   const [schedules, setSchedules] = useState([]);
 
   useEffect(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem("ttp_students_local") || "[]");
-      const t = JSON.parse(localStorage.getItem("ttp_teachers_local") || "[]");
-      const sc = JSON.parse(localStorage.getItem("ttp_schedules_local") || "[]");
-      setStudents(Array.isArray(s) ? s : []);
-      setTeachers(Array.isArray(t) ? t : []);
-      setSchedules(Array.isArray(sc) ? sc : []);
-    } catch {
-      setStudents([]);
-      setTeachers([]);
-      setSchedules([]);
-    }
+    const load = async () => {
+      const [{ data: s }, { data: t }, { data: sc }] = await Promise.all([
+        supabase.from("students").select("id, name, last_name, status, current_course, current_group"),
+        supabase.from("teachers").select("id, name, specialty, status"),
+        supabase.from("schedules").select("*"),
+      ]);
+      setStudents(s || []);
+      setTeachers(t || []);
+      setSchedules(sc || []);
+    };
+    load();
   }, []);
 
   // Build attendance rows from students + schedules

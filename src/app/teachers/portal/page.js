@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/utils/supabaseClient";
 
 const teacherNavGroups = [
   {
@@ -39,142 +40,49 @@ export default function TeacherPortal() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // 1. Validar la sesión activa
     const session = localStorage.getItem("ttp_user_session");
-    if (!session) {
-      router.push("/login");
-      return;
-    }
+    if (!session) { router.push("/login"); return; }
 
+    let parsedSession;
     try {
-      const parsedSession = JSON.parse(session);
-      if (parsedSession.role !== "teacher") {
-        router.push("/login");
-        return;
+      parsedSession = JSON.parse(session);
+      if (parsedSession.role !== "teacher") { router.push("/login"); return; }
+    } catch (e) { router.push("/login"); return; }
+
+    setTeacherSession(parsedSession);
+
+    const loadData = async () => {
+      try {
+        const teacherNameLower = parsedSession.name.toLowerCase();
+
+        const [{ data: teachersData }, { data: schedulesData }, { data: studentsData }] = await Promise.all([
+          supabase.from("teachers").select("*").ilike("email", parsedSession.email),
+          supabase.from("schedules").select("*"),
+          supabase.from("students").select("id, name, last_name, email, current_course, teacher, schedule, status, payment_status"),
+        ]);
+
+        const profile = (teachersData || [])[0] || { name: parsedSession.name, email: parsedSession.email, specialty: "English Specialist", rate: 380, completed_hours: 0, status: "activo" };
+        setTeacherProfile(profile);
+
+        const matchedClasses = (schedulesData || []).filter(c =>
+          c.teacher && (c.teacher.toLowerCase().includes(teacherNameLower) || teacherNameLower.includes(c.teacher.toLowerCase()))
+        );
+        setClasses(matchedClasses);
+
+        const attMap = {};
+        matchedClasses.forEach(c => { attMap[c.id] = []; });
+        setAttendance(attMap);
+
+        const matchedStudents = (studentsData || []).filter(s =>
+          s.teacher && s.teacher.toLowerCase().includes(teacherNameLower)
+        );
+        setStudents(matchedStudents);
+      } catch (e) {
+        console.error("Error cargando portal del maestro:", e);
       }
-      setTeacherSession(parsedSession);
+    };
 
-      // 2. Cargar perfil del maestro en vivo desde ttp_teachers_local
-      const storedTeachers = localStorage.getItem("ttp_teachers_local");
-      let teachersList = [];
-      if (storedTeachers) {
-        try {
-          teachersList = JSON.parse(storedTeachers);
-          // Autocuración: Si los docentes no tienen correos, se los asignamos dinámicamente
-          teachersList = teachersList.map(t => {
-            if (!t.email) {
-              const lowerName = t.name.toLowerCase();
-              if (lowerName.includes("elena")) t.email = "e.valdez@ttp.mx";
-              else if (lowerName.includes("wilson") || lowerName.includes("james")) t.email = "m.johnson@ttp.mx";
-              else if (lowerName.includes("parker") || lowerName.includes("carmen") || lowerName.includes("sarah")) t.email = "c.rios@ttp.mx";
-              else if (lowerName.includes("brown") || lowerName.includes("robert") || lowerName.includes("salas")) t.email = "r.salas@ttp.mx";
-              else t.email = `${t.name.toLowerCase().replace(/[^a-z]/g, "")}@ttp.mx`;
-            }
-            return t;
-          });
-          localStorage.setItem("ttp_teachers_local", JSON.stringify(teachersList));
-        } catch (e) {}
-      } else {
-        teachersList = [];
-        localStorage.setItem("ttp_teachers_local", JSON.stringify(teachersList));
-      }
-
-      const matched = teachersList.find(
-        (t) => t.email && t.email.toLowerCase() === parsedSession.email.toLowerCase()
-      );
-      if (matched) {
-        setTeacherProfile(matched);
-      } else {
-        const newProf = {
-          id: `t-${Date.now()}`,
-          name: parsedSession.name,
-          email: parsedSession.email,
-          specialty: "English Specialist",
-          rate: 380,
-          hoursCompleted: 0,
-          status: "activo",
-          since: "Mayo 2026"
-        };
-        teachersList.push(newProf);
-        localStorage.setItem("ttp_teachers_local", JSON.stringify(teachersList));
-        setTeacherProfile(newProf);
-      }
-
-      // 3. Cargar las clases agendadas de este docente
-      const storedClasses = localStorage.getItem("ttp_schedules_local");
-      let classesList = [];
-      if (storedClasses) {
-        classesList = JSON.parse(storedClasses);
-      } else {
-        classesList = [
-          { id: "c1", title: "English A2 - Elementary", day: "LUN", time: "08:00 - 09:30", slot: "08:00", teacher: parsedSession.name, capacity: 12, type: "grupal", status: "scheduled", checkInTime: null, meetLink: "https://meet.google.com/abc-defg-hij" },
-          { id: "c2", title: "Club de Conversación B2", day: "MIÉ", time: "10:00 - 11:30", slot: "10:00", teacher: parsedSession.name, capacity: 12, type: "club", status: "scheduled", checkInTime: null, meetLink: "https://meet.google.com/xyz-qprs-tuv" },
-          { id: "c3", title: "Business Writing C1", day: "VIE", time: "12:00 - 13:30", slot: "12:00", teacher: parsedSession.name, capacity: 12, type: "privada", status: "scheduled", checkInTime: null, meetLink: "https://meet.google.com/lmn-opqr-stu" }
-        ];
-        localStorage.setItem("ttp_schedules_local", JSON.stringify(classesList));
-      }
-
-      const teacherNameLower = parsedSession.name.toLowerCase();
-      const matchedClasses = classesList.filter(c => 
-        c.teacher.toLowerCase().includes(teacherNameLower) || 
-        teacherNameLower.includes(c.teacher.toLowerCase())
-      );
-      setClasses(matchedClasses);
-
-      // 4. Cargar alumnos y asistencia
-      const storedAtt = localStorage.getItem("ttp_attendance_local");
-      let attMap = storedAtt ? JSON.parse(storedAtt) : {};
-      
-      // Asegurar semillas de asistencia si está vacía la clase
-      matchedClasses.forEach(c => {
-        if (!attMap[c.id]) {
-          attMap[c.id] = [
-            { id: "s1", name: "Elena Rodríguez", email: "elena.rod@email.com", status: "sin_asignar" },
-            { id: "s2", name: "Carlos Méndez", email: "c.mendez@mail.es", status: "sin_asignar" },
-            { id: "s4", name: "Lucía Ferreyra", email: "lucia.f@provider.com", status: "sin_asignar" }
-          ];
-        }
-      });
-      localStorage.setItem("ttp_attendance_local", JSON.stringify(attMap));
-      setAttendance(attMap);
-
-      // 5. Cargar alumnos del docente de forma consolidada
-      const storedStudents = localStorage.getItem("ttp_students_local");
-      let studentsList = [];
-      if (storedStudents) {
-        studentsList = JSON.parse(storedStudents);
-      } else {
-        studentsList = [
-          { id: "s1", name: "Elena Rodríguez", email: "elena.rod@email.com", current_course: "English Mastery Program", teacher: parsedSession.name, schedule: "Lunes y Miércoles 08:00 - 09:30", status: "activo", payment_status: "al_corriente" },
-          { id: "s2", name: "Carlos Méndez", email: "c.mendez@mail.es", current_course: "Business English Elite", teacher: parsedSession.name, schedule: "Martes y Jueves 12:00 - 13:30", status: "activo", payment_status: "moroso" },
-          { id: "s4", name: "Lucía Ferreyra", email: "lucia.f@provider.com", current_course: "Business English", teacher: parsedSession.name, schedule: "Martes y Jueves 09:00 - 10:00", status: "activo", payment_status: "al_corriente" }
-        ];
-        localStorage.setItem("ttp_students_local", JSON.stringify(studentsList));
-      }
-
-      // Encontrar alumnos asignados a las clases de este profesor
-      const studentIdsInClasses = new Set();
-      matchedClasses.forEach(c => {
-        (attMap[c.id] || []).forEach(s => studentIdsInClasses.add(s.id));
-      });
-
-      // Filtrar y adjuntar el payment_status en caliente para alertas (sin saldos financieros)
-      const matchedStudents = studentsList.filter(s => studentIdsInClasses.has(s.id) || s.teacher.toLowerCase().includes(teacherNameLower));
-      setStudents(matchedStudents);
-
-      // 6. Cargar bitácoras de feedback, justificaciones y seguimientos
-      const storedFeedbacks = localStorage.getItem("ttp_class_feedback_local");
-      if (storedFeedbacks) setSavedFeedbacks(JSON.parse(storedFeedbacks));
-
-      const storedJustifications = localStorage.getItem("ttp_justifications_local");
-      if (storedJustifications) setJustifications(JSON.parse(storedJustifications));
-
-      const storedFollowups = localStorage.getItem("ttp_followups_checked_local");
-      if (storedFollowups) setFollowupsChecked(JSON.parse(storedFollowups));
-
-    } catch (e) {
-      router.push("/login");
-    }
+    loadData();
   }, [router]);
 
   const showToast = (msg) => {
@@ -188,93 +96,41 @@ export default function TeacherPortal() {
   };
 
   // ----- OPERACIONES DE CHECK-IN / CHECK-OUT -----
-  const handleCheckIn = (classId) => {
-    const now = new Date();
-    const timeString = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false });
-    
-    const storedClasses = localStorage.getItem("ttp_schedules_local");
-    if (!storedClasses) return;
-
-    try {
-      const list = JSON.parse(storedClasses);
-      const updated = list.map((c) => {
-        if (c.id === classId) {
-          return { ...c, status: "in_progress", checkInTime: timeString };
-        }
-        return c;
-      });
-      localStorage.setItem("ttp_schedules_local", JSON.stringify(updated));
-      setClasses(updated.filter(c => c.teacher.toLowerCase().includes(teacherSession.name.toLowerCase())));
-      showToast(`🔑 Check-In registrado exitosamente a las ${timeString}. ¡Buena clase!`);
-    } catch (e) {}
+  const handleCheckIn = async (classId) => {
+    const timeString = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false });
+    await supabase.from("schedules").update({ status: "in_progress", checkInTime: timeString }).eq("id", classId);
+    setClasses(prev => prev.map(c => c.id === classId ? { ...c, status: "in_progress", checkInTime: timeString } : c));
+    showToast(`🔑 Check-In registrado exitosamente a las ${timeString}. ¡Buena clase!`);
   };
 
-  const handleCheckOut = (cObj) => {
-    const classId = cObj.id;
-    const now = new Date();
-    const checkOutString = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false });
-
+  const handleCheckOut = async (cObj) => {
     const baseDuration = getClassDuration(cObj.time);
     let deduction = 0;
-    
     if (cObj.checkInTime && cObj.time) {
       try {
         const scheduledStartStr = cObj.time.split("-")[0].trim();
         const [schH, schM] = scheduledStartStr.split(":").map(Number);
         const [actH, actM] = cObj.checkInTime.split(":").map(Number);
         const delay = (actH * 60 + actM) - (schH * 60 + schM);
-        if (delay > 10) {
-          deduction = Number((delay / 60).toFixed(2));
-        }
+        if (delay > 10) deduction = Number((delay / 60).toFixed(2));
       } catch (err) {}
     }
+    const finalHours = Math.max(0, Number((baseDuration - deduction).toFixed(2)));
 
-    let finalHours = baseDuration - deduction;
-    if (finalHours < 0) finalHours = 0;
+    await supabase.from("schedules").update({ status: "completed" }).eq("id", cObj.id);
+    setClasses(prev => prev.map(c => c.id === cObj.id ? { ...c, status: "completed" } : c));
 
-    const storedClasses = localStorage.getItem("ttp_schedules_local");
-    if (!storedClasses) return;
+    if (teacherProfile?.id) {
+      const newHours = Number(((teacherProfile.completed_hours || 0) + finalHours).toFixed(2));
+      await supabase.from("teachers").update({ completed_hours: newHours }).eq("id", teacherProfile.id);
+      setTeacherProfile(prev => ({ ...prev, completed_hours: newHours }));
+    }
 
-    try {
-      const list = JSON.parse(storedClasses);
-      const updated = list.map((c) => {
-        if (c.id === classId) {
-          return { ...c, status: "completed" };
-        }
-        return c;
-      });
-      localStorage.setItem("ttp_schedules_local", JSON.stringify(updated));
-      setClasses(updated.filter(c => c.teacher.toLowerCase().includes(teacherSession.name.toLowerCase())));
-
-      // Acreditar nómina
-      updateTeacherHoursRecord(finalHours, deduction);
-    } catch (e) {}
-  };
-
-  const updateTeacherHoursRecord = (hoursToAdd, deduction) => {
-    const storedTeachers = localStorage.getItem("ttp_teachers_local");
-    if (!storedTeachers) return;
-
-    try {
-      const list = JSON.parse(storedTeachers);
-      const updated = list.map((t) => {
-        if (t.email.toLowerCase() === teacherSession.email.toLowerCase()) {
-          const currentHours = t.hoursCompleted || 0;
-          const nextHours = Number((currentHours + hoursToAdd).toFixed(2));
-          const updatedProf = { ...t, hoursCompleted: nextHours };
-          setTeacherProfile(updatedProf);
-          return updatedProf;
-        }
-        return t;
-      });
-      localStorage.setItem("ttp_teachers_local", JSON.stringify(updated));
-
-      if (deduction > 0) {
-        showToast(`⏹️ Check-Out. Se acreditaron ${hoursToAdd} hrs (-${deduction} hrs por retraso superior a 10 min).`);
-      } else {
-        showToast(`⏹️ Check-Out exitoso. Se acreditaron ${hoursToAdd} hrs de enseñanza.`);
-      }
-    } catch (e) {}
+    if (deduction > 0) {
+      showToast(`⏹️ Check-Out. Se acreditaron ${finalHours} hrs (-${deduction} hrs por retraso superior a 10 min).`);
+    } else {
+      showToast(`⏹️ Check-Out exitoso. Se acreditaron ${finalHours} hrs de enseñanza.`);
+    }
   };
 
   const getClassDuration = (timeStr) => {
@@ -302,7 +158,6 @@ export default function TeacherPortal() {
     });
 
     setAttendance(updatedAtt);
-    localStorage.setItem("ttp_attendance_local", JSON.stringify(updatedAtt));
     
     const sObj = classRoster.find(s => s.id === studentId);
     showToast(`✅ Asistencia de ${sObj?.name || "Alumno"} guardada como '${newStatus.toUpperCase()}'`);
@@ -324,7 +179,6 @@ export default function TeacherPortal() {
     updatedFeedbacks[classId] = [newFeedbackObj, ...updatedFeedbacks[classId]];
 
     setSavedFeedbacks(updatedFeedbacks);
-    localStorage.setItem("ttp_class_feedback_local", JSON.stringify(updatedFeedbacks));
 
     // Limpiar input
     setFeedbacks(prev => ({ ...prev, [classId]: "" }));
@@ -339,7 +193,6 @@ export default function TeacherPortal() {
 
     const updated = { ...justifications, [key]: text.trim() };
     setJustifications(updated);
-    localStorage.setItem("ttp_justifications_local", JSON.stringify(updated));
     showToast("💾 Justificación de falta guardada y vinculada al expediente.");
   };
 
@@ -347,7 +200,6 @@ export default function TeacherPortal() {
   const handleToggleFollowup = (id) => {
     const updated = { ...followupsChecked, [id]: !followupsChecked[id] };
     setFollowupsChecked(updated);
-    localStorage.setItem("ttp_followups_checked_local", JSON.stringify(updated));
     if (updated[id]) {
       showToast("✨ Acción de seguimiento marcada como completada.");
     }

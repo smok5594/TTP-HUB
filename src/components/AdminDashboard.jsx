@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -7,26 +7,6 @@ import { simulateSendWhatsApp, getInitialLogs, approvedTemplates } from "@/utils
 import Sidebar from "@/components/Sidebar";
 import { toast } from "sonner";
 
-// ── STORAGE KEYS & FALLBACK SEEDS FOR DYNAMIC METRICS ──────────────────────
-const S_KEY  = "ttp_students_local";
-const T_KEY  = "ttp_teachers_local";
-const MV_KEY = "ttp_movements_local";
-const GR_KEY = "ttp_groups_local";
-const TX_KEY = "ttp_transactions_local";
-const SCH_KEY = "ttp_schedules_local";
-
-const DEFAULT_TEACHERS = [];
-const DEFAULT_GROUPS = [];
-const DEFAULT_STUDENTS = [];
-
-const getLS = (key, fb) => {
-  try {
-    const v = typeof window !== "undefined" && localStorage.getItem(key);
-    return v ? JSON.parse(v) : fb;
-  } catch {
-    return fb;
-  }
-};
 
 export default function AdminDashboard() {
   // Estado de pestañas de navegación (en español)
@@ -40,6 +20,8 @@ export default function AdminDashboard() {
 
   // Estado de estudiantes cargados
   const [students, setStudents] = useState([]);
+  const [coursesList, setCoursesList] = useState([]);
+  const [groupsList, setGroupsList] = useState([]);
 
   // Estados de WhatsApp Gateway y Alertas en Tiempo Real
   const [whatsappLogs, setWhatsAppLogs] = useState(getInitialLogs());
@@ -119,17 +101,17 @@ export default function AdminDashboard() {
     });
   };
 
-  // Extraer cursos y grupos únicos dinámicamente de la lista de alumnos
+  // Extraer cursos y grupos únicos dinámicamente
   const uniqueCourses = Array.from(
     new Set([
-      ...getLS("ttp_courses_local", []).map(c => c.name || c.title || c).filter(Boolean),
+      ...coursesList,
       ...students.map(s => s.current_course).filter(Boolean)
     ])
   );
 
   const uniqueGroups = Array.from(
     new Set([
-      ...getLS("ttp_groups_local", []).map(g => g.title || g.name || g).filter(Boolean),
+      ...groupsList,
       ...students.map(s => s.current_group).filter(Boolean)
     ])
   );
@@ -285,20 +267,42 @@ export default function AdminDashboard() {
 
   // Funciones de consulta para Supabase
   const fetchMetrics = async () => {
-    // 1. Calcular métricas dinámicas desde localStorage como estado principal
-    const allLocalStudents = getLS(S_KEY, DEFAULT_STUDENTS);
-    const allLocalGroups = getLS(GR_KEY, DEFAULT_GROUPS);
-    const allLocalTeachers = getLS(T_KEY, DEFAULT_TEACHERS);
-    const allLocalTransactions = getLS(TX_KEY, []);
-    const allLocalSchedules = getLS(SCH_KEY, []);
+    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-    setStudents(allLocalStudents);
+    const [
+      { data: studentsData },
+      { data: teachersData },
+      { data: transactionsData },
+      { data: classesData },
+      { data: groupsData },
+      { data: coursesData },
+      { data: groupCodesData },
+    ] = await Promise.all([
+      supabase.from("students").select("id, name, last_name, status, enrolled_date, current_course, current_group, phone, amount_due, payment_status"),
+      supabase.from("teachers").select("status, rate"),
+      supabase.from("billing_transactions").select("amount, status"),
+      supabase.from("classes").select("status").eq("class_date", today),
+      supabase.from("groups").select("capacity, enrolled"),
+      supabase.from("courses").select("name").eq("status", "activo"),
+      supabase.from("groups").select("code").eq("status", "activo"),
+    ]);
 
-    // Inicializar el destinatario del simulador de WhatsApp si hay estudiantes
-    if (allLocalStudents.length > 0) {
+    const allStudents = studentsData || [];
+    const allTeachers = teachersData || [];
+    const allTransactions = transactionsData || [];
+    const allClasses = classesData || [];
+    const allGroups = groupsData || [];
+
+    setStudents(allStudents);
+    if (coursesData) setCoursesList(coursesData.map(c => c.name));
+    if (groupCodesData) setGroupsList(groupCodesData.map(g => g.code));
+
+    if (allStudents.length > 0) {
       setWhatsappForm((prev) => {
         if (!prev.studentName) {
-          const first = allLocalStudents[0];
+          const first = allStudents[0];
           const fullName = `${first.name} ${first.last_name || ""}`.trim();
           return {
             ...prev,
@@ -312,25 +316,20 @@ export default function AdminDashboard() {
     }
 
     // activeStudents: estudiantes con estado "active" o "moroso"
-    const activeStudentsCount = allLocalStudents.filter(
+    const activeStudentsCount = allStudents.filter(
       (s) => s.status === "active" || s.status === "moroso"
     ).length;
 
-    // newStudents: estudiantes inscritos en el mes calendario actual (ej: "2026-05")
-    const now = new Date();
-    const thisYear = now.getFullYear();
-    const thisMonth = String(now.getMonth() + 1).padStart(2, "0");
-    const prefix = `${thisYear}-${thisMonth}`; // "2026-05"
-    const newStudentsCount = allLocalStudents.filter(
+    const newStudentsCount = allStudents.filter(
       (s) => s.enrolled_date && s.enrolled_date.startsWith(prefix)
     ).length;
 
     // occupancyRate: capacidad de grupos vs alumnos matriculados en ellos
-    const totalCapacity = allLocalGroups.reduce((acc, g) => acc + (g.capacity || 10), 0);
+    const totalCapacity = allGroups.reduce((acc, g) => acc + (g.capacity || 10), 0);
     let occupiedCapacity = 0;
-    allLocalStudents.forEach((s) => {
+    allStudents.forEach((s) => {
       if (s.status === "active" || s.status === "moroso") {
-        const hasGroup = allLocalGroups.some(
+        const hasGroup = allGroups.some(
           (g) =>
             g.title === s.current_group ||
             g.title === s.current_course ||
@@ -346,7 +345,7 @@ export default function AdminDashboard() {
 
     // pendingPayments: suma real del adeudo de alumnos morosos
     let calculatedPendingPayments = 0;
-    allLocalStudents.forEach((s) => {
+    allStudents.forEach((s) => {
       if (s.status === "moroso" || s.payment_status === "moroso") {
         calculatedPendingPayments += (s.amount_due !== undefined ? Number(s.amount_due) : 2450);
       }
@@ -354,7 +353,7 @@ export default function AdminDashboard() {
 
     // totalIncome: suma real de transacciones procesadas (exitosas) de ttp_transactions_local
     let calculatedTotalIncome = 0;
-    allLocalTransactions.forEach((tx) => {
+    allTransactions.forEach((tx) => {
       if (tx.status === "processed") {
         calculatedTotalIncome += Number(tx.amount || 0);
       }
@@ -362,7 +361,7 @@ export default function AdminDashboard() {
 
     // netProfit: totalIncome - totalExpenses (donde gastos son los sueldos a profesores registrados en ttp_teachers_local)
     let totalExpenses = 0;
-    allLocalTeachers.forEach((t) => {
+    allTeachers.forEach((t) => {
       totalExpenses += (t.hoursCompleted || t.hours || 0) * (t.rate || 250);
     });
     const calculatedNetProfit = Math.max(0, calculatedTotalIncome - totalExpenses);
@@ -374,48 +373,23 @@ export default function AdminDashboard() {
     const totalForecast = calculatedTotalIncome + calculatedPendingPayments;
     const forecastPercent = totalForecast > 0 ? Math.round((calculatedTotalIncome / totalForecast) * 100) : 0;
 
-    // activeTeachers y teachersOnLeave — siempre desde Supabase
-    const { data: dbTeachers } = await supabase.from("teachers").select("status");
-    const teacherSource = dbTeachers || allLocalTeachers;
-    const calculatedActiveTeachers = teacherSource.filter((t) => t.status === "active" || t.status === "activo").length;
-    const calculatedTeachersOnLeave = teacherSource.filter((t) => t.status === "on_leave" || t.status === "suspendido").length;
+    const calculatedActiveTeachers = allTeachers.filter(t => t.status === "active" || t.status === "activo").length;
+    const calculatedTeachersOnLeave = allTeachers.filter(t => t.status === "on_leave" || t.status === "suspendido").length;
 
-    // classesToday: clases programadas para el día de la semana actual en ttp_schedules_local
-    const todayName = now.toLocaleDateString("es-ES", { weekday: "short" }).toUpperCase(); // e.g., "LUN.", "MAR.", "MIÉ.", "JUE.", "VIE.", "SÁB.", "DOM."
-    
-    // Normalizar día (quitar acentos y puntos para coincidir LUN, MAR, MIE, JUE, VIE, SAB, DOM)
-    const normalizeDay = (d) => {
-      if (!d) return "";
-      return d.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, "").toUpperCase();
-    };
-
-    const todayCode = normalizeDay(todayName).substring(0, 3); // "LUN", "MAR", "MIE", etc.
-
-    const classesToday = allLocalSchedules.filter((c) => {
-      const classDay = normalizeDay(c.day).substring(0, 3);
-      return classDay === todayCode;
-    });
-
-    const calculatedClassesToday = classesToday.length;
-    const calculatedClassesInProgress = classesToday.filter((c) => c.status === "in_progress" || c.status === "in-progress" || c.status === "in_course").length;
-
-    const localMetrics = {
+    setMetrics({
       activeStudents: activeStudentsCount,
       newStudents: newStudentsCount,
       occupancyRate: calculatedOccupancy,
       totalIncome: calculatedTotalIncome,
       pendingPayments: calculatedPendingPayments,
       netProfit: calculatedNetProfit,
-      marginRate: marginRate,
-      forecastPercent: forecastPercent,
-      totalClassesToday: calculatedClassesToday,
-      classesInProgress: calculatedClassesInProgress,
+      marginRate,
+      forecastPercent,
+      totalClassesToday: allClasses.length,
+      classesInProgress: allClasses.filter(c => c.status === "in_progress").length,
       activeTeachers: calculatedActiveTeachers,
       teachersOnLeave: calculatedTeachersOnLeave,
-    };
-
-    // Para asegurar que los datos no sean inventados y comiencen en $0, calculamos todo dinámicamente a partir de alumnos y transacciones reales.
-    setMetrics(localMetrics);
+    });
   };
 
   const fetchActivities = async () => {
@@ -460,104 +434,11 @@ export default function AdminDashboard() {
         throw new Error("Sin actividades en base de datos.");
       }
     } catch (err) {
-      console.log(
-        "Consulta de actividades de Supabase omitida/fallida. Usando fallback local dinámico."
-      );
-      
-      const localStudents = getLS(S_KEY, DEFAULT_STUDENTS);
-      const localMovements = getLS(MV_KEY, []);
-      
-      const items = [];
-      
-      // 1. Procesar movimientos académicos de localStorage
-      localMovements.forEach((mv, index) => {
-        let labelType = "Curso";
-        if (mv.changeType === "group") labelType = "Modalidad";
-        if (mv.changeType === "teacher") labelType = "Profesor";
-        if (mv.changeType === "schedule") labelType = "Horario";
-        
-        let displayTo = mv.to;
-        if (mv.changeType === "group") {
-          const CT_LABEL = { grupal: "Grupal", privada: "Privada", conversation_club: "Conv. Club" };
-          displayTo = CT_LABEL[mv.to] || mv.to;
-        }
-
-        items.push({
-          id: mv.id || `mv-${index}`,
-          event: `Cambio de ${labelType} de ${mv.studentName} a "${displayTo}"`,
-          category: "Académico",
-          status: "Completado",
-          rawDate: mv.date,
-          rawTime: mv.time,
-          date: mv.date === new Date().toISOString().split("T")[0] 
-            ? `Hoy, ${mv.time}` 
-            : `${mv.date.split("-").reverse().join("/")} ${mv.time}`
-        });
-      });
-      
-      // 2. Procesar inscripciones de estudiantes de localStorage
-      localStudents.forEach((st, index) => {
-        if (st.enrolled_date) {
-          items.push({
-            id: `reg-${st.id || index}`,
-            event: `Nueva inscripción de alumno: ${st.name} ${st.last_name || ""}`,
-            category: "Académico",
-            status: "Completado",
-            rawDate: st.enrolled_date,
-            rawTime: "09:00",
-            date: st.enrolled_date === new Date().toISOString().split("T")[0]
-              ? "Hoy, 09:00 AM"
-              : `${st.enrolled_date.split("-").reverse().join("/")}`
-          });
-        }
-      });
-      
-      // Ordenar por fecha y hora descendente
-      items.sort((a, b) => {
-        const dateA = a.rawDate + " " + (a.rawTime || "00:00");
-        const dateB = b.rawDate + " " + (b.rawTime || "00:00");
-        return dateB.localeCompare(dateA);
-      });
-      
-      // Renglones de semilla financieros fijos para que se vea premium e integrado
-      const seedActivities = [
-        {
-          id: "seed-1",
-          event: "Pago recibido: Grupo B-12",
-          category: "Financiero",
-          status: "Procesado",
-          date: "Hoy, 08:45 AM",
-        },
-        {
-          id: "seed-2",
-          event: "Pago vencido: Carlos Méndez",
-          category: "Financiero",
-          status: "Alerta",
-          date: "Ayer, 06:20 PM",
-        }
-      ];
-      
-      const merged = [];
       setActivities([]);
     }
   };
 
   useEffect(() => {
-    // ⚡ Auto-limpieza completa de caché local legacy para garantizar eliminación total de personas inventadas
-    if (typeof window !== "undefined") {
-      const alreadyCleanedV5 = localStorage.getItem("ttp_storage_cleaned_v5");
-      if (!alreadyCleanedV5) {
-        localStorage.setItem("ttp_students_local", JSON.stringify([]));
-        localStorage.setItem("ttp_teachers_local", JSON.stringify([]));
-        localStorage.setItem("ttp_groups_local", JSON.stringify([]));
-        localStorage.setItem("ttp_transactions_local", JSON.stringify([]));
-        localStorage.setItem("ttp_movements_local", JSON.stringify([]));
-        localStorage.setItem("ttp_attendance_local", JSON.stringify({}));
-        localStorage.setItem("ttp_schedules_local", JSON.stringify([]));
-        localStorage.setItem("ttp_storage_cleaned_v5", "true");
-        console.log("🧹 TTP Hub: All legacy mock local storage data physically wiped successfully!");
-      }
-    }
 
     setIsLoading(true);
     fetchMetrics();
@@ -1461,3 +1342,7 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
+
+
+

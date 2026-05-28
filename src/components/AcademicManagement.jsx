@@ -3,16 +3,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/utils/supabaseClient";
 
-// ── Storage keys ────────────────────────────────────────────────────────────────
-const S_KEY  = "ttp_students_local";
-const T_KEY  = "ttp_teachers_local";
-const MV_KEY = "ttp_movements_local";
-const GR_KEY = "ttp_groups_local";
-const UN_KEY = "ttp_unavailable_schedules";
-
-// ── Default seed data ───────────────────────────────────────────────────────────
-const DEFAULT_TEACHERS = [];
-const DEFAULT_GROUPS = [];
 
 // ── UI constants ────────────────────────────────────────────────────────────────
 const CT_LABEL = { grupal: "Grupal", privada: "Privada", conversation_club: "Conv. Club" };
@@ -37,10 +27,6 @@ const TRANSFER_META = {
   teacher:    { label: "Maestro",       field: "teacher",        icon: "person_4",  color: "bg-pink-50 border-pink-200 text-pink-700"   },
   schedule:   { label: "Horario",       field: "schedule",       icon: "schedule",  color: "bg-amber-50 border-amber-200 text-amber-700"},
 };
-
-// ── localStorage helpers ─────────────────────────────────────────────────────────
-const getLS  = (key, fb) => { try { const v = typeof window !== "undefined" && localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } };
-const saveLS = (key, d)  => { if (typeof window !== "undefined") localStorage.setItem(key, JSON.stringify(d)); };
 
 // ── Schedule conflict detection ──────────────────────────────────────────────────
 function parseSchedule(str) {
@@ -86,49 +72,33 @@ export default function AcademicManagement({ showToast }) {
   // New-group modal
   const [ngModal, setNgModal] = useState({ open: false, title: "", level: "Intermediate", class_type: "grupal", teacher: "", schedule: "", capacity: 15 });
 
-  useEffect(() => { 
-    loadAll();
-    
-    // Sincronizar profesores desde Supabase en caliente
-    const syncTeachersFromDB = async () => {
-      try {
-        const { data, error } = await supabase.from("teachers").select("*");
-        if (error) throw error;
-        if (data && data.length > 0) {
-          const mapped = data.map(t => ({
-            id: t.id,
-            name: t.name,
-            email: t.email || `${t.name.toLowerCase().replace(/\s/g, "")}@ttp.mx`,
-            phone: t.phone || "+52 55 0000 0000",
-            specialty: t.specialty || "Profesor de Inglés",
-            rate: t.rate || 250,
-            since: t.since || "Enero 2024",
-            birthdate: t.birthdate || "",
-            burlington_user: t.burlington_user || "",
-            burlington_pass: t.burlington_pass || "",
-            ttp_user: t.ttp_user || "",
-            ttp_pass: t.ttp_pass || "",
-            classes: t.classes || 0,
-            students: t.students || 0,
-            status: t.status === "active" ? "activo" : "suspendido"
-          }));
-          setTeachers(mapped);
-          saveLS(T_KEY, mapped);
-        }
-      } catch (err) {
-        console.log("Error sincronizando profesores en Gestión Académica:", err);
+  useEffect(() => {
+    const loadAll = async () => {
+      const [{ data: studentsData }, { data: teachersData }, { data: groupsData }] = await Promise.all([
+        supabase.from("students").select("*"),
+        supabase.from("teachers").select("*"),
+        supabase.from("groups").select("*"),
+      ]);
+      if (studentsData) setStudents(studentsData);
+      if (teachersData) {
+        const mapped = teachersData.map(t => ({
+          ...t,
+          status: t.status === "active" ? "activo" : t.status,
+        }));
+        setTeachers(mapped);
+      }
+      if (groupsData && teachersData) {
+        const resolved = groupsData.map(g => ({
+          ...g,
+          teacher: teachersData.find(t => t.id === g.teacher_id)?.name || g.teacher || "",
+        }));
+        setGroups(resolved);
+      } else if (groupsData) {
+        setGroups(groupsData);
       }
     };
-    syncTeachersFromDB();
+    loadAll();
   }, []);
-
-  function loadAll() {
-    setStudents(getLS(S_KEY, []));
-    const t = getLS(T_KEY, null); if (!t) saveLS(T_KEY, DEFAULT_TEACHERS); setTeachers(t || DEFAULT_TEACHERS);
-    setMovements(getLS(MV_KEY, []));
-    const g = getLS(GR_KEY, null); if (!g) saveLS(GR_KEY, DEFAULT_GROUPS); setGroups(g || DEFAULT_GROUPS);
-    setUnavail(getLS(UN_KEY, []));
-  }
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const byTeacher = useMemo(() => {
@@ -165,17 +135,12 @@ export default function AcademicManagement({ showToast }) {
     }
   };
 
-  // ── Sync academic changes to all modules ─────────────────────────────────────
+  // ── Sync academic changes to Supabase ────────────────────────────────────────
   const syncAcademicChanges = async (student, changeType, toVal) => {
-    if (typeof window === "undefined") return;
-
-    // 1. Base de datos del alumno: Update Supabase
     try {
       const meta = TRANSFER_META[changeType];
       const updateData = {};
-      if (meta && meta.field) {
-        updateData[meta.field] = toVal;
-      }
+      if (meta && meta.field) updateData[meta.field] = toVal;
       if (student.current_course) updateData.current_course = student.current_course;
       if (student.current_group) updateData.current_group = student.current_group;
       if (student.schedule) updateData.schedule = student.schedule;
@@ -185,191 +150,52 @@ export default function AcademicManagement({ showToast }) {
         updateData.amount_due = student.amount_due;
         updateData.payment_status = student.payment_status || "pendiente";
       }
-      if (student.enrollments) {
-        updateData.enrollments = student.enrollments;
-      }
-
+      if (student.enrollments) updateData.enrollments = student.enrollments;
       await supabase.from("students").update(updateData).eq("id", student.id);
     } catch (err) {
-      console.log("Supabase update bypassed / offline.");
-    }
-
-    // 2. Horario, Asistencia, and Google Meet/Calendar Sync
-    try {
-      const storedAtt = localStorage.getItem("ttp_attendance_local");
-      let att = storedAtt ? JSON.parse(storedAtt) : {};
-      
-      // Clean student from all existing classes in attendance dictionary to prevent duplicates/ghost students
-      Object.keys(att).forEach(cId => {
-        att[cId] = (att[cId] || []).filter(s => s.id !== student.id);
-      });
-
-      const storedClasses = localStorage.getItem("ttp_schedules_local");
-      let classesList = storedClasses ? JSON.parse(storedClasses) : [];
-
-      // Collect specs of all classes the student should be in
-      const activeSpecs = [];
-      if (student.teacher && student.schedule) {
-        activeSpecs.push({
-          teacher: student.teacher,
-          schedule: student.schedule,
-          title: student.current_group || student.current_course || "Clase de Inglés",
-          modality: student.class_type || "grupal"
-        });
-      }
-
-      // Add extra enrollments
-      const enrolls = student.enrollments || [];
-      enrolls.forEach(e => {
-        if (e.teacher && e.schedule) {
-          activeSpecs.push({
-            teacher: e.teacher,
-            schedule: e.schedule,
-            title: e.group || e.course || "Clase de Inglés",
-            modality: e.class_type || "grupal"
-          });
-        }
-      });
-
-      const getVisualDaysAndSlot = (schedStr) => {
-        const DAYS_MAP = {
-          lunes: "LUN",
-          martes: "MAR",
-          miercoles: "MIÉ",
-          "miércoles": "MIÉ",
-          jueves: "JUE",
-          viernes: "VIE",
-          sabado: "SÁB",
-          "sábado": "SÁB"
-        };
-        const visualDays = [];
-        const lower = (schedStr || "").toLowerCase();
-        Object.entries(DAYS_MAP).forEach(([k, v]) => {
-          if (lower.includes(k)) {
-            if (!visualDays.includes(v)) visualDays.push(v);
-          }
-        });
-        if (visualDays.length === 0) visualDays.push("LUN");
-
-        let slot = "12:00";
-        const timeMatch = lower.match(/(\d{1,2}):(\d{2})/);
-        if (timeMatch) {
-          const hour = parseInt(timeMatch[1], 10);
-          if (hour < 10) slot = "08:00";
-          else if (hour < 12) slot = "10:00";
-          else slot = "12:00";
-        }
-
-        let timeStr = "12:00 - 13:30";
-        const fullTimeMatch = schedStr ? schedStr.match(/(\d{1,2}:\d{2})\s*[–\-]\s*(\d{1,2}:\d{2})/) : null;
-        if (fullTimeMatch) {
-          timeStr = `${fullTimeMatch[1]} - ${fullTimeMatch[2]}`;
-        }
-
-        return { visualDays, slot, timeStr };
-      };
-
-      activeSpecs.forEach(spec => {
-        const { visualDays, slot, timeStr } = getVisualDaysAndSlot(spec.schedule);
-        
-        visualDays.forEach(day => {
-          const matchedClass = classesList.find(c => 
-            c.teacher.toLowerCase().replace(/\s/g, "") === spec.teacher.toLowerCase().replace(/\s/g, "") && 
-            c.day === day && 
-            c.slot === slot
-          );
-
-          let classId;
-          if (matchedClass) {
-            classId = matchedClass.id;
-          } else {
-            classId = `c-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
-            const newClassObj = {
-              id: classId,
-              title: spec.title,
-              day: day,
-              time: timeStr,
-              slot: slot,
-              teacher: spec.teacher,
-              capacity: 12,
-              type: spec.modality === "privada" ? "privada" : spec.modality === "conversation_club" ? "club" : "grupal",
-              paymentAlert: student.status === "moroso",
-              meetLink: `https://meet.google.com/${Math.random().toString(36).substring(2, 5)}-${Math.random().toString(36).substring(2, 6)}-${Math.random().toString(36).substring(2, 5)}`,
-              status: "scheduled",
-              checkInTime: null
-            };
-            classesList.push(newClassObj);
-          }
-
-          att[classId] = att[classId] || [];
-          if (!att[classId].some(s => s.id === student.id)) {
-            att[classId].push({
-              id: student.id,
-              name: `${student.name} ${student.last_name || ""}`.trim(),
-              email: student.email || `${student.name.toLowerCase()}@ttp.com`,
-              status: "sin_asignar"
-            });
-          }
-        });
-      });
-
-      localStorage.setItem("ttp_schedules_local", JSON.stringify(classesList));
-      localStorage.setItem("ttp_attendance_local", JSON.stringify(att));
-    } catch (err) {
-      console.error("Error syncing schedules:", err);
+      console.log("Supabase sync error:", err);
     }
   };
 
   // ── Apply transfer ───────────────────────────────────────────────────────────
-  const applyTransfer = () => {
+  const applyTransfer = async () => {
     const { student, type, newValue, selectedTeacher } = tfr;
     if (!student || !newValue) return;
-    const meta  = TRANSFER_META[type];
-    const from  = student[meta.field] || "—";
-    const all   = getLS(S_KEY, []);
-    
-    // Keep current_course and current_group always in sync
+    const meta = TRANSFER_META[type];
+    const from = student[meta.field] || "—";
+
     let extra = {};
     if (type === "course") {
       extra = { current_group: newValue };
     } else if (type === "group") {
       extra = { teacher: selectedTeacher || student.teacher };
-      // Find a matching group for this teacher and modality
       const match = groups.find(g => g.teacher === (selectedTeacher || student.teacher) && g.class_type === newValue);
       if (match) {
         extra.current_course = match.title;
         extra.current_group = match.title;
         extra.schedule = match.schedule;
       }
-
-      // Calculate financial fee change
       let fee = 2450.00;
       if (newValue === "privada") fee = 3200.00;
       else if (newValue === "conversation_club") fee = 1500.00;
-      
       extra.amount_due = fee;
       extra.payment_status = student.status === "moroso" ? "moroso" : "pendiente";
-      
-      // Sync transaction to ledger
-      const storedTrans = localStorage.getItem("ttp_transactions_local");
-      let transactions = storedTrans ? JSON.parse(storedTrans) : [];
-      let category = newValue === "privada" ? "Tutoría Privada" : newValue === "conversation_club" ? "Inscripción" : "Colegiatura Mensual";
-      
-      const newTx = {
-        id: `tx-${Date.now()}`,
-        description: `Ajuste de Arancel (${newValue.toUpperCase()}) - ${student.name} ${student.last_name || ""}`.trim(),
+
+      await supabase.from("billing_transactions").insert([{
+        description: `Ajuste de Arancel (${newValue.toUpperCase()}) - ${`${student.name} ${student.last_name || ""}`.trim()}`,
         amount: fee,
         status: student.status === "moroso" ? "overdue" : "pending",
-        category: category,
-        date: new Date().toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })
-      };
-      transactions.unshift(newTx);
-      localStorage.setItem("ttp_transactions_local", JSON.stringify(transactions));
+        category: newValue === "privada" ? "Tutoría Privada" : newValue === "conversation_club" ? "Inscripción" : "Colegiatura Mensual",
+        student_id: student.id,
+        student_name: `${student.name} ${student.last_name || ""}`.trim(),
+        type: "payment",
+        method: "Manual",
+      }]);
     }
-    
+
     const updatedStudent = { ...student, [meta.field]: newValue, ...extra };
-    const upd   = all.map(s => s.id === student.id ? updatedStudent : s);
-    saveLS(S_KEY, upd); setStudents(upd);
+    setStudents(prev => prev.map(s => s.id === student.id ? updatedStudent : s));
+    await supabase.from("students").update({ [meta.field]: newValue, ...extra }).eq("id", student.id);
 
     const mv = {
       id: `mv-${Date.now()}`,
@@ -382,13 +208,10 @@ export default function AcademicManagement({ showToast }) {
       affectsFinancials: type === "group",
       syncStatus: { "Base de datos": true, "Horario": true, "Maestro": true, "Perfil alumno": true, "Finanzas": type === "group", "Calendario": true },
     };
-    const allMvs = [mv, ...getLS(MV_KEY, [])];
-    saveLS(MV_KEY, allMvs); setMovements(allMvs);
+    setMovements(prev => [mv, ...prev]);
     setTfr({ open: false, step: 1, type: "course", student: null, newValue: "", selectedTeacher: "", search: "" });
     const displayVal = type === "group" ? CT_LABEL[newValue] : newValue;
     showToast?.(`✅ ${student.name}: ${meta.label} → "${displayVal}"`);
-    
-    // Call synchronizer
     syncAcademicChanges(updatedStudent, type, newValue);
   };
 
@@ -405,15 +228,13 @@ export default function AcademicManagement({ showToast }) {
     allEnrollmentsOf(student).find(e => hasConflict(e.schedule, newSchedule)) || null;
 
   // ── Apply assignment ─────────────────────────────────────────────────────────
-  const applyAssignment = (student, force = false) => {
+  const applyAssignment = async (student, force = false) => {
     const { group } = asgn;
     if (!student || !group) return;
 
-    // Already in this group?
     const already = allEnrollmentsOf(student).some(e => e.course === group.title || e.group === group.title);
     if (already) { showToast?.("ℹ El alumno ya está inscrito en este grupo"); return; }
 
-    // Conflict check (unless forced)
     if (!force) {
       const conflict = getConflict(student, group.schedule);
       if (conflict) {
@@ -423,26 +244,25 @@ export default function AcademicManagement({ showToast }) {
     }
 
     const newEnroll = { course: group.title, group: group.title, teacher: group.teacher, schedule: group.schedule, class_type: group.class_type };
-    const all = getLS(S_KEY, []);
     const updatedStudent = { ...student, enrollments: [...(student.enrollments || []), newEnroll] };
-    const upd = all.map(s => s.id === student.id ? updatedStudent : s);
-    saveLS(S_KEY, upd); setStudents(upd);
+    setStudents(prev => prev.map(s => s.id === student.id ? updatedStudent : s));
+    await supabase.from("students").update({ enrollments: updatedStudent.enrollments }).eq("id", student.id);
 
     const mv = { id: `mv-${Date.now()}`, date: new Date().toISOString().split("T")[0], time: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }), studentId: student.id, studentName: `${student.name} ${student.last_name || ""}`.trim(), changeType: "group", from: student.current_course || "—", to: group.title, affectsFinancials: false, syncStatus: { "Base de datos": true, "Horario": true, "Maestro": true, "Perfil alumno": true, "Finanzas": false, "Calendario": true } };
-    const allMvs = [mv, ...getLS(MV_KEY, [])];
-    saveLS(MV_KEY, allMvs); setMovements(allMvs);
+    setMovements(prev => [mv, ...prev]);
     setAsgn({ open: false, group: null, search: "", pendingStudent: null, conflictInfo: null });
     showToast?.(`✅ ${student.name} inscrito en "${group.title}"`);
-    
-    // Call synchronizer
     syncAcademicChanges(updatedStudent, "group", group.title);
   };
 
   // ── Create group ─────────────────────────────────────────────────────────────
-  const createGroup = () => {
+  const createGroup = async () => {
     if (!ngModal.title.trim() || !ngModal.teacher.trim()) { showToast?.("❌ Completa nombre y maestro"); return; }
-    const ng = { id: `g-${Date.now()}`, title: ngModal.title.trim(), level: ngModal.level, class_type: ngModal.class_type, teacher: ngModal.teacher.trim(), schedule: ngModal.schedule.trim(), capacity: Number(ngModal.capacity) || 15 };
-    const upd = [...groups, ng]; saveLS(GR_KEY, upd); setGroups(upd);
+    const teacher = teachers.find(t => t.name === ngModal.teacher.trim());
+    const ng = { title: ngModal.title.trim(), level: ngModal.level, class_type: ngModal.class_type, teacher_id: teacher?.id || null, schedule: ngModal.schedule.trim(), capacity: Number(ngModal.capacity) || 15 };
+    const { data, error } = await supabase.from("groups").insert([ng]).select().single();
+    if (error) { showToast?.("❌ Error al crear grupo"); return; }
+    setGroups(prev => [...prev, { ...data, teacher: ngModal.teacher.trim() }]);
     setNgModal({ open: false, title: "", level: "Intermediate", class_type: "grupal", teacher: "", schedule: "", capacity: 15 });
     showToast?.(`✅ Grupo "${ng.title}" creado`);
   };
@@ -451,12 +271,11 @@ export default function AcademicManagement({ showToast }) {
     const t = teachers.find(x => x.id === teacherId);
     const name = t ? t.name : "docente";
     setSettleConfirmModal({
-      teacherId: teacherId,
+      teacherId,
       teacherName: name,
-      onConfirm: () => {
-        const upd = teachers.map(t => t.id === teacherId ? { ...t, completed_hours: 0 } : t);
-        setTeachers(upd);
-        saveLS(T_KEY, upd);
+      onConfirm: async () => {
+        await supabase.from("teachers").update({ completed_hours: 0 }).eq("id", teacherId);
+        setTeachers(prev => prev.map(t => t.id === teacherId ? { ...t, completed_hours: 0 } : t));
         showToast?.("💰 Pago liquidado de forma exitosa. Horas acumuladas restablecidas a 0.");
       }
     });
@@ -862,7 +681,7 @@ export default function AcademicManagement({ showToast }) {
   const TabHorarios = () => {
     const toggleUnavail = (sched) => {
       const upd = unavail.includes(sched) ? unavail.filter(s => s !== sched) : [...unavail, sched];
-      setUnavail(upd); saveLS(UN_KEY, upd);
+      setUnavail(upd);
     };
 
     // Combine schedules from students + groups for a complete view
@@ -951,7 +770,7 @@ export default function AcademicManagement({ showToast }) {
                       <p className="font-semibold text-slate-700 text-sm">{sched}</p>
                     </div>
                     <button
-                      onClick={() => { const upd = unavail.filter(s => s !== sched); setUnavail(upd); saveLS(UN_KEY, upd); }}
+                      onClick={() => { const upd = unavail.filter(s => s !== sched); setUnavail(upd); }}
                       className="text-[11px] font-bold text-teal-600 border border-teal-200 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-xl transition-colors whitespace-nowrap"
                     >
                       Volver a habilitar
@@ -1215,8 +1034,7 @@ export default function AcademicManagement({ showToast }) {
   const AssignModal = () => {
     if (!asgn.open || !asgn.group) return null;
     const closeModal = () => setAsgn({ open: false, group: null, search: "", pendingStudent: null, conflictInfo: null });
-    const allStudentsLS = getLS(S_KEY, []);
-    const filtered = allStudentsLS.filter(s => {
+    const filtered = students.filter(s => {
       const q = asgn.search.toLowerCase();
       return !q || s.name.toLowerCase().includes(q) || (s.last_name || "").toLowerCase().includes(q) || s.email.toLowerCase().includes(q);
     });
