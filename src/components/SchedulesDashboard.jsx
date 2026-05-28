@@ -262,7 +262,7 @@ export default function SchedulesDashboard() {
   };
 
   // Agregar o Editar clase
-  const handleAddClass = (e) => {
+  const handleAddClass = async (e) => {
     e.preventDefault();
 
     // Días activos de la nueva clase
@@ -316,28 +316,55 @@ export default function SchedulesDashboard() {
       return;
     }
 
-    if (editingClassId) {
-      setClasses((prev) =>
-        prev.map((c) =>
-          c.id === editingClassId
-            ? { ...c, ...newClass, capacity: Number(newClass.capacity) }
-            : c
-        )
-      );
-      setIsAddClassModalOpen(false);
-      showToast(`¡Clase "${newClass.title}" actualizada con éxito!`);
-      setEditingClassId(null);
-    } else {
-      const newId = `c-${Date.now()}`;
-      const classObj = {
-        id: newId,
-        ...newClass,
-        capacity: Number(newClass.capacity)
-      };
+    const teacherObj = teachersList.find(t => t.name === newClass.teacher);
+    const dbRecord = {
+      title: newClass.title,
+      teacher_id: teacherObj?.id || null,
+      teacher: newClass.teacher,
+      daysSelected: newClass.daysSelected,
+      slot: newClass.slot,
+      startTime: newClass.startTime,
+      endTime: newClass.endTime,
+      time: newClass.time,
+      startDate: newClass.startDate || null,
+      endDate: newClass.endDate || null,
+      capacity: Number(newClass.capacity) || 15,
+      type: newClass.type || "grupal",
+      paymentAlert: newClass.paymentAlert || false,
+    };
 
-      setClasses((prev) => [...prev, classObj]);
-      setIsAddClassModalOpen(false);
-      showToast(`¡Clase "${newClass.title}" agendada con éxito!`);
+    try {
+      if (editingClassId) {
+        const { error } = await supabase
+          .from("schedules")
+          .update(dbRecord)
+          .eq("id", editingClassId);
+        if (error) throw error;
+
+        setClasses((prev) =>
+          prev.map((c) =>
+            c.id === editingClassId
+              ? { ...c, ...newClass, capacity: Number(newClass.capacity) }
+              : c
+          )
+        );
+        setIsAddClassModalOpen(false);
+        showToast(`¡Clase "${newClass.title}" actualizada con éxito!`);
+        setEditingClassId(null);
+      } else {
+        const { data, error } = await supabase
+          .from("schedules")
+          .insert([dbRecord])
+          .select();
+        if (error) throw error;
+
+        setClasses((prev) => [...prev, data[0]]);
+        setIsAddClassModalOpen(false);
+        showToast(`¡Clase "${newClass.title}" agendada con éxito!`);
+      }
+    } catch (err) {
+      showToast(`⛔ Error al guardar la clase en la base de datos: ${err.message}`);
+      return;
     }
     
     // Limpiar campos
@@ -442,10 +469,16 @@ export default function SchedulesDashboard() {
   const handleDeleteClass = (id, title) => {
     setDeleteConfirmModal({
       name: title,
-      onConfirm: () => {
-        setClasses((prev) => prev.filter((c) => c.id !== id));
-        showToast(`Clase "${title}" cancelada.`);
-        setSelectedClass(null);
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase.from("schedules").delete().eq("id", id);
+          if (error) throw error;
+          setClasses((prev) => prev.filter((c) => c.id !== id));
+          showToast(`Clase "${title}" cancelada.`);
+          setSelectedClass(null);
+        } catch (err) {
+          showToast(`⛔ Error al eliminar clase de la base de datos.`);
+        }
       }
     });
   };
@@ -455,19 +488,27 @@ export default function SchedulesDashboard() {
     setIsMeetGenerating(true);
     showToast("🗓️ Conectando con Google Calendar API... Creando evento...");
     
-    setTimeout(() => {
+    setTimeout(async () => {
       const meetId = Math.random().toString(36).substring(2, 5) + "-" + Math.random().toString(36).substring(2, 6) + "-" + Math.random().toString(36).substring(2, 5);
       const newMeetLink = `https://meet.google.com/${meetId}`;
       
-      setClasses((prev) =>
-        prev.map((c) => (c.id === classId ? { ...c, meetLink: newMeetLink } : c))
-      );
-      
-      // Actualizar también la clase seleccionada en el modal
-      setSelectedClass((prev) => (prev && prev.id === classId ? { ...prev, meetLink: newMeetLink } : prev));
-      
-      setIsMeetGenerating(false);
-      showToast("🎥 Enlace Google Meet creado exitosamente y guardado en Google Calendar.");
+      try {
+        const { error } = await supabase.from("schedules").update({ meetLink: newMeetLink }).eq("id", classId);
+        if (error) throw error;
+
+        setClasses((prev) =>
+          prev.map((c) => (c.id === classId ? { ...c, meetLink: newMeetLink } : c))
+        );
+        
+        // Actualizar también la clase seleccionada en el modal
+        setSelectedClass((prev) => (prev && prev.id === classId ? { ...prev, meetLink: newMeetLink } : prev));
+        
+        showToast("🎥 Enlace Google Meet creado exitosamente y guardado en Google Calendar.");
+      } catch (err) {
+        showToast("⛔ Error al guardar enlace Meet en la base de datos.");
+      } finally {
+        setIsMeetGenerating(false);
+      }
     }, 1500);
   };
 
@@ -540,15 +581,25 @@ export default function SchedulesDashboard() {
     setTeachersList(prev => prev.map(t => t.id === teacher.id ? { ...t, completed_hours: newCompleted } : t));
   };
 
-  const handleTeacherCheckIn = (classId) => {
+  const handleTeacherCheckIn = async (classId) => {
     const timeStr = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-    setClasses(prev => prev.map(c => 
-      c.id === classId 
-        ? { ...c, status: "in_progress", checkInTime: timeStr } 
-        : c
-    ));
-    setSelectedClass(prev => prev && prev.id === classId ? { ...prev, status: "in_progress", checkInTime: timeStr } : prev);
-    showToast("⏰ Check-In registrado: Clase iniciada en tiempo real.");
+    try {
+      const { error } = await supabase
+        .from("schedules")
+        .update({ status: "in_progress", checkInTime: timeStr })
+        .eq("id", classId);
+      if (error) throw error;
+
+      setClasses(prev => prev.map(c => 
+        c.id === classId 
+          ? { ...c, status: "in_progress", checkInTime: timeStr } 
+          : c
+      ));
+      setSelectedClass(prev => prev && prev.id === classId ? { ...prev, status: "in_progress", checkInTime: timeStr } : prev);
+      showToast("⏰ Check-In registrado: Clase iniciada en tiempo real.");
+    } catch (err) {
+      showToast("⛔ Error al registrar Check-In en la base de datos.");
+    }
   };
 
   const getLateCheckInPenalty = (scheduledSlot, checkInTimeStr) => {
@@ -574,18 +625,28 @@ export default function SchedulesDashboard() {
     const penalty = getLateCheckInPenalty(cObj.slot, cObj.checkInTime);
     const finalDuration = Math.max(0, Number((scheduledDuration - penalty).toFixed(2)));
 
-    setClasses(prev => prev.map(c => 
-      c.id === cObj.id 
-        ? { ...c, status: "completed" } 
-        : c
-    ));
-    setSelectedClass(prev => prev && prev.id === cObj.id ? { ...prev, status: "completed" } : prev);
-    updateTeacherHours(cObj.teacher, finalDuration);
-    
-    if (penalty > 0) {
-      showToast(`⚠️ Clase finalizada. Se aplicó una deducción de -${penalty} hrs por check-in tardío. Horas acumuladas: ${finalDuration} hrs.`);
-    } else {
-      showToast(`✅ Clase finalizada. Se acumularon ${finalDuration} hrs para el pago de ${cObj.teacher}.`);
+    try {
+      const { error } = await supabase
+        .from("schedules")
+        .update({ status: "completed" })
+        .eq("id", cObj.id);
+      if (error) throw error;
+
+      setClasses(prev => prev.map(c => 
+        c.id === cObj.id 
+          ? { ...c, status: "completed" } 
+          : c
+      ));
+      setSelectedClass(prev => prev && prev.id === cObj.id ? { ...prev, status: "completed" } : prev);
+      updateTeacherHours(cObj.teacher, finalDuration);
+      
+      if (penalty > 0) {
+        showToast(`⚠️ Clase finalizada. Se aplicó una deducción de -${penalty} hrs por check-in tardío. Horas acumuladas: ${finalDuration} hrs.`);
+      } else {
+        showToast(`✅ Clase finalizada. Se acumularon ${finalDuration} hrs para el pago de ${cObj.teacher}.`);
+      }
+    } catch (err) {
+      showToast("⛔ Error al finalizar la clase en la base de datos.");
     }
   };
 
