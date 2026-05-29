@@ -21,7 +21,8 @@ export default function StudentList() {
 
   const { students: allStudents, setStudents, teachers, groups, loading: contextLoading, refreshStudents } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // { name: '', onConfirm: fn }
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
+  const [studentSubTab, setStudentSubTab] = useState("active_list");
 
   const isLoading = contextLoading;
 
@@ -179,7 +180,6 @@ export default function StudentList() {
 
   // Control de vistas (Alumnos vs Gestión Académica)
   const [currentView, setCurrentView] = useState("students");
-  const [studentSubTab, setStudentSubTab] = useState("active_list");
 
   // Mostrar notificaciones via Sonner
   const showToast = (msg) => {
