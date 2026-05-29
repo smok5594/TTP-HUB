@@ -6,8 +6,11 @@ import Sidebar from "@/components/Sidebar";
 import { supabase } from "@/utils/supabaseClient";
 import { handleMockWebhookEvent, simulateStripeCharge } from "@/utils/stripeSimulator";
 import { toast } from "sonner";
+import { useData } from "@/context/DataContext";
 
 export default function BillingDashboard() {
+  const { teachers: contextTeachers } = useData();
+
   // Estado de búsqueda y filtros
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -37,81 +40,8 @@ export default function BillingDashboard() {
   // ==========================================
   // ESTADOS DE NÓMINA DE PROFESORES
   // ==========================================
-  const [teachersPayroll, setTeachersPayroll] = useState([
-    {
-      id: "tp1",
-      name: "Lic. Elena Valdéz",
-      specialty: "English Mastery B2",
-      hours: 32,
-      rate: 280,
-      amountPaid: 0,
-      status: "pending", // pending, partial, paid
-      bank: "BBVA Bancomer",
-      clabe: "0121 8001 2345 6789 01"
-    },
-    {
-      id: "tp2",
-      name: "Prof. John Doe",
-      specialty: "Bilingual Tech",
-      hours: 40,
-      rate: 300,
-      amountPaid: 6000,
-      status: "partial",
-      bank: "Santander",
-      clabe: "0141 8009 8765 4321 09"
-    },
-    {
-      id: "tp3",
-      name: "Lic. Maria Gomez",
-      specialty: "Conversation Advanced",
-      hours: 15,
-      rate: 290,
-      amountPaid: 4350,
-      status: "paid",
-      bank: "Banorte",
-      clabe: "0721 8003 4567 8901 23"
-    },
-    {
-      id: "tp4",
-      name: "Prof. Alex Ramirez",
-      specialty: "IELTS Prep",
-      hours: 22,
-      rate: 260,
-      amountPaid: 0,
-      status: "pending",
-      bank: "Citibanamex",
-      clabe: "0021 8005 6789 0123 45"
-    }
-  ]);
-
-  const [payrollHistory, setPayrollHistory] = useState([
-    {
-      id: "h1",
-      speiId: "SPEI-98471-TTP",
-      date: "15 de May, 2026",
-      time: "10:30",
-      teacherName: "Lic. Maria Gomez",
-      concept: "Nómina 1ra Quincena Mayo 2026",
-      amount: 4350,
-      reference: "8827401",
-      status: "Exitoso",
-      bank: "Banorte",
-      clabe: "0721 **** **** **23"
-    },
-    {
-      id: "h2",
-      speiId: "SPEI-97124-TTP",
-      date: "15 de May, 2026",
-      time: "10:45",
-      teacherName: "Prof. John Doe",
-      concept: "Adelanto Nómina 1ra Quincena Mayo",
-      amount: 6000,
-      reference: "1198273",
-      status: "Exitoso",
-      bank: "Santander",
-      clabe: "0141 **** **** **09"
-    }
-  ]);
+  const [teachersPayroll, setTeachersPayroll] = useState([]);
+  const [payrollHistory, setPayrollHistory] = useState([]);
 
   // Estados de control para modales de nómina
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -159,43 +89,26 @@ export default function BillingDashboard() {
     setIsLoading(false);
   };
 
-  // Cargar profesores desde Supabase si existen y sincronizarlos con la nómina local
-  const fetchTeachersFromSupabase = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("teachers")
-        .select("*");
-      
-      if (error) throw error;
-      
-      if (data && data.length > 0) {
-        setTeachersPayroll((prevPayroll) => {
-          // Combinar lo que viene de Supabase con lo que tenemos de nómina
-          const updatedPayroll = [...prevPayroll];
-          data.forEach((teacher) => {
-            // Verificar si ya existe en nómina por nombre
-            const exists = updatedPayroll.some(tp => tp.name.toLowerCase() === teacher.name.toLowerCase());
-            if (!exists) {
-              updatedPayroll.push({
-                id: teacher.id || `tp-${Date.now()}-${Math.random()}`,
-                name: teacher.name,
-                specialty: teacher.specialty || "Profesor de Inglés",
-                hours: 20, // horas por defecto
-                rate: 250, // tarifa por defecto
-                amountPaid: 0,
-                status: "pending",
-                bank: "BBVA Bancomer",
-                clabe: "0121 800" + Math.floor(10000000000 + Math.random() * 90000000000)
-              });
-            }
-          });
-          return updatedPayroll;
-        });
-      }
-    } catch (err) {
-      console.warn("No se pudo conectar a la tabla de 'teachers' en Supabase o está vacía. Usando lista local predefinida.");
-    }
-  };
+  // Sincronizar nómina con los profesores reales del contexto global
+  useEffect(() => {
+    if (!contextTeachers || contextTeachers.length === 0) return;
+    setTeachersPayroll(prev => {
+      return contextTeachers.map(t => {
+        const existing = prev.find(p => p.id === t.id);
+        return existing ? { ...existing, name: t.name, specialty: t.specialty } : {
+          id: t.id,
+          name: t.name,
+          specialty: t.specialty || "Profesor de Inglés",
+          hours: 0,
+          rate: t.rate || 250,
+          amountPaid: 0,
+          status: "pending",
+          bank: "",
+          clabe: ""
+        };
+      });
+    });
+  }, [contextTeachers]);
 
   // Cargar estudiantes desde Supabase para la simulación de Stripe
   const fetchStudentsForSim = async () => {
@@ -260,7 +173,6 @@ export default function BillingDashboard() {
 
   useEffect(() => {
     fetchTransactions();
-    fetchTeachersFromSupabase();
     fetchStudentsForSim();
   }, []);
 

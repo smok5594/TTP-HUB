@@ -143,7 +143,7 @@ export default function Sidebar({ activeName }) {
         </button>
 
         <p className="text-center text-[9px] text-slate-300 font-medium pt-1 tracking-wide">
-          v1.8.4 · Blazing Fast Global Cache · 28 May 2026
+          v1.8.5 · Blazing Fast Global Cache · 28 May 2026
         </p>
       </div>
     </aside>
