@@ -143,7 +143,7 @@ export default function Sidebar({ activeName }) {
         </button>
 
         <p className="text-center text-[9px] text-slate-300 font-medium pt-1 tracking-wide">
-          v1.4 · Dashboard Fix · 27 May 2026
+          v1.5 · Relational Sync · 28 May 2026
         </p>
       </div>
     </aside>
