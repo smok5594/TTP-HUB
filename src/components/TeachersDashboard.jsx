@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/utils/supabaseClient";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { toast } from "sonner";
+import { useData } from "@/context/DataContext";
 
 const initialTeachers = [];
 
@@ -40,9 +41,8 @@ const getAutoUsername = (nameStr) => {
 
 
 export default function TeachersDashboard() {
-  const [teachers, setTeachers] = useState([]);
+  const { teachers, setTeachers, loading, refreshTeachers } = useData();
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   
   // Real Email Sending States
   const [emailModalTeacher, setEmailModalTeacher] = useState(null);
@@ -88,39 +88,7 @@ export default function TeachersDashboard() {
   };
 
   const fetchTeachers = async () => {
-    setLoading(true);
-    try {
-      const { data: teachersData, error } = await supabase.from("teachers").select("*");
-      if (error) throw error;
-      if (!teachersData || teachersData.length === 0) {
-        setTeachers([]);
-        return;
-      }
-      const { data: classesData } = await supabase.from("classes").select("teacher_id");
-      const { data: studentsData } = await supabase.from("students").select("teacher");
-      const mapped = teachersData.map(t => ({
-        id: t.id,
-        name: t.name,
-        email: t.email || `${t.name.toLowerCase().replace(/\s/g, "")}@ttp.mx`,
-        phone: t.phone || "+52 55 0000 0000",
-        specialty: t.specialty || "Profesor de Inglés",
-        rate: t.rate || 250,
-        since: t.since || "",
-        birthdate: t.birthdate || "",
-        burlington_user: t.burlington_user || "",
-        burlington_pass: t.burlington_pass || "",
-        ttp_user: t.ttp_user || "",
-        ttp_pass: t.ttp_pass || "",
-        classes: classesData?.filter(c => c.teacher_id === t.id).length || 0,
-        students: studentsData?.filter(s => s.teacher === t.name).length || 0,
-        status: t.status === "active" ? "activo" : "suspendido"
-      }));
-      setTeachers(mapped);
-    } catch (err) {
-      console.error("Error cargando profesores:", err);
-    } finally {
-      setLoading(false);
-    }
+    await refreshTeachers();
   };
 
   const fetchAvailability = async () => {

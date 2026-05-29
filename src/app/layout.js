@@ -2,6 +2,7 @@ import { Montserrat, Inter } from "next/font/google";
 import AuthGuard from "@/components/AuthGuard";
 import { Toaster } from "sonner";
 import GlobalUppercaseListener from "@/components/GlobalUppercaseListener";
+import { DataProvider } from "@/context/DataContext";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -54,7 +55,9 @@ export default function RootLayout({ children }) {
           richColors
           closeButton
         />
-        <AuthGuard>{children}</AuthGuard>
+        <DataProvider>
+          <AuthGuard>{children}</AuthGuard>
+        </DataProvider>
       </body>
     </html>
   );

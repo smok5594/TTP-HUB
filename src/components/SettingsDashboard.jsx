@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { supabase } from "@/utils/supabaseClient";
+import { useData } from "@/context/DataContext";
 
 // Definido FUERA del componente para que React no lo recree en cada render
 function ModalWrapper({ onClose, children }) {
@@ -57,14 +58,18 @@ export default function SettingsDashboard() {
   const [activeTab, setActiveTab]       = useState("cursos");
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // { titleType: '', name: '', onConfirm: fn }
 
+  const { 
+    courses, setCourses, 
+    groups, setGroups, 
+    teachers: teachersList 
+  } = useData();
+
   // ── Cursos ──────────────────────────────────────────────────────────────────
-  const [courses, setCourses]             = useState([]);
   const [addCourseModal, setAddCourseModal] = useState(false);
   const [editCourseModal, setEditCourseModal] = useState(null);
   const [courseForm, setCourseForm]       = useState(emptyCourse);
 
   // ── Grupos ──────────────────────────────────────────────────────────────────
-  const [groups, setGroups]             = useState([]);
   const [addGroupModal, setAddGroupModal] = useState(false);
   const [editGroupModal, setEditGroupModal] = useState(null);
   const [groupForm, setGroupForm]       = useState(emptyGroup);
@@ -73,9 +78,6 @@ export default function SettingsDashboard() {
   const [users, setUsers]               = useState([]);
   const [addUserModal, setAddUserModal] = useState(false);
   const [userForm, setUserForm]         = useState({ name: "", email: "", role: "Teacher" });
-
-  // ── Maestros disponibles (para seleccionar en cursos) ───────────────────────
-  const [teachersList, setTeachersList] = useState([]);
 
   // ── Correo de Sistema ───────────────────────────────────────────────────────
   const [smtpUser, setSmtpUser] = useState("");
@@ -116,16 +118,8 @@ export default function SettingsDashboard() {
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: c }, { data: g }, { data: u }, { data: t }] = await Promise.all([
-        supabase.from("courses").select("*").order("created_at", { ascending: false }),
-        supabase.from("groups").select("*").order("created_at", { ascending: false }),
-        supabase.from("system_users").select("*").order("created_at", { ascending: false }),
-        supabase.from("teachers").select("id, name, email, specialty, status"),
-      ]);
-      if (c) setCourses(c);
-      if (g) setGroups(g);
+      const { data: u } = await supabase.from("system_users").select("*").order("created_at", { ascending: false });
       if (u) setUsers(u);
-      if (t) setTeachersList(t);
 
       // Cargar configuraciones de correo SMTP
       try {
