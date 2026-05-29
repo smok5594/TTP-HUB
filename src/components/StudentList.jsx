@@ -7,6 +7,7 @@ import { supabase } from "@/utils/supabaseClient";
 import AcademicManagement from "@/components/AcademicManagement";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { toast } from "sonner";
+import { useData } from "@/context/DataContext";
 
 export default function StudentList() {
   // Estados para búsqueda y filtrado
@@ -18,23 +19,58 @@ export default function StudentList() {
   const [paymentDateFilter, setPaymentDateFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Estados de carga e interactividad
-  const [isLoading, setIsLoading] = useState(false);
+  const { students: allStudents, setStudents, teachers, groups, loading: contextLoading, refreshStudents } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  
-  // Estado para pop-up de confirmación de eliminación
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // { name: '', onConfirm: fn }
 
-  // Lista de alumnos de la base de datos
-  const [students, setStudents] = useState([]);
-  
-  // Estados de conteo y KPI
-  const [kpi, setKpi] = useState({
-    totalStudents: 0,
-    attendance: "94.2%",
-    pendingPayments: 0
-  });
+  const isLoading = contextLoading;
 
+  // Filtrado de alumnos en memoria (Caché Global - 0ms latencia!)
+  const filteredStudents = React.useMemo(() => {
+    return allStudents.filter(s => {
+      // 1. Filtro de búsqueda
+      if (search.trim()) {
+        const query = search.toLowerCase();
+        const fullName = `${s.name || ""} ${s.last_name || ""}`.toLowerCase();
+        const email = (s.email || "").toLowerCase();
+        if (!fullName.includes(query) && !email.includes(query)) return false;
+      }
+      // 2. Filtro de estado
+      if (statusFilter && s.status !== statusFilter) return false;
+      
+      // 3. Filtro de curso
+      if (courseFilter && !(s.current_course?.toLowerCase().includes(courseFilter.toLowerCase()))) return false;
+      
+      // 4. Filtro de profesor
+      if (teacherFilter && !(s.teacher?.toLowerCase().includes(teacherFilter.toLowerCase()))) return false;
+      
+      // 5. Filtro de fecha de inicio
+      if (startDateFilter && !(s.enrolled_date?.includes(startDateFilter))) return false;
+      
+      // 6. Filtro de próximo pago
+      if (paymentDateFilter && !(s.next_payment?.includes(paymentDateFilter))) return false;
+
+      // 7. Filtro por sub-pestaña (activos vs egresados/bajas)
+      if (studentSubTab === "active_list") {
+        if (s.status === "graduated" || s.status === "inactive") return false;
+      } else {
+        if (s.status !== "graduated" && s.status !== "inactive") return false;
+      }
+      
+      return true;
+    });
+  }, [allStudents, search, statusFilter, courseFilter, teacherFilter, startDateFilter, paymentDateFilter, studentSubTab]);
+
+  const students = filteredStudents;
+
+  // KPIs dinámicos calculados en base al caché global
+  const kpi = React.useMemo(() => {
+    return {
+      totalStudents: allStudents.length,
+      attendance: allStudents.length > 0 ? "94.2%" : "0%",
+      pendingPayments: allStudents.filter(s => s.status === "moroso" || s.payment_status === "moroso").length
+    };
+  }, [allStudents]);
 
   // Datos para el formulario de Nuevo Alumno
   const [newStudent, setNewStudent] = useState({
@@ -60,19 +96,36 @@ export default function StudentList() {
     amount_due: "2450",
   });
 
-  const [formGroups,   setFormGroups]   = useState([]);
-  const [formTeachers, setFormTeachers] = useState([]);
+  // Mapeo dinámico de profesores y grupos del caché global para los formularios
+  const formTeachers = React.useMemo(() => {
+    return teachers.map(t => ({
+      id: t.id,
+      name: t.name,
+      specialty: t.specialty,
+      status: t.status === "activo" ? "activo" : "suspendido"
+    }));
+  }, [teachers]);
 
+  const formGroups = React.useMemo(() => {
+    return groups.map(g => ({
+      id: g.id,
+      code: g.code,
+      title: g.code,
+      course: g.course,
+      schedule: g.schedule,
+      capacity: g.capacity,
+      status: g.status,
+      teacher_id: g.teacher_id
+    }));
+  }, [groups]);
+
+  // Ejecutamos silent background refresh al montar el componente
   useEffect(() => {
-    const loadFormData = async () => {
-      const [{ data: tData }, { data: gData }] = await Promise.all([
-        supabase.from("teachers").select("id, name, specialty, status"),
-        supabase.from("groups").select("id, code, course, schedule, capacity, status, teacher_id")
-      ]);
-      if (tData) setFormTeachers(tData.map(t => ({ ...t, status: t.status === "active" ? "activo" : "suspendido" })));
-      if (gData) setFormGroups(gData.map(g => ({ ...g, title: g.code })));
-    };
-    loadFormData();
+    if (allStudents.length === 0) {
+      refreshStudents();
+    } else {
+      refreshStudents(); // Silent background refresh
+    }
   }, []);
 
   const handleTeacherSelect = (teacherName) => {
@@ -134,46 +187,6 @@ export default function StudentList() {
     else if (msg.includes("eliminado") || msg.includes("Eliminado")) toast.error(msg);
     else toast(msg);
   };
-
-
-  const fetchStudents = async () => {
-    setIsLoading(true);
-    try {
-      let query = supabase.from("students").select("*").order("created_at", { ascending: false });
-      if (search.trim()) query = query.or(`name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`);
-      if (statusFilter) query = query.eq("status", statusFilter);
-      if (courseFilter) query = query.ilike("current_course", `%${courseFilter}%`);
-      if (teacherFilter) query = query.ilike("teacher", `%${teacherFilter}%`);
-      if (startDateFilter) query = query.ilike("enrolled_date", `%${startDateFilter}%`);
-      if (paymentDateFilter) query = query.ilike("next_payment", `%${paymentDateFilter}%`);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const all = data || [];
-      let filtered = [...all];
-      if (studentSubTab === "active_list") {
-        filtered = filtered.filter(s => s.status !== "graduated" && s.status !== "inactive");
-      } else {
-        filtered = filtered.filter(s => s.status === "graduated" || s.status === "inactive");
-      }
-
-      setStudents(filtered);
-      setKpi({
-        totalStudents: all.length,
-        attendance: all.length > 0 ? "94.2%" : "0%",
-        pendingPayments: all.filter(s => s.status === "moroso").length,
-      });
-    } catch (err) {
-      console.error("Error cargando estudiantes:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStudents();
-  }, [search, statusFilter, courseFilter, teacherFilter, startDateFilter, paymentDateFilter, currentView, studentSubTab]);
 
   const handleAddStudent = async (e) => {
     e.preventDefault();

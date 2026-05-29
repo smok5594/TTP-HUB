@@ -41,7 +41,7 @@ const getAutoUsername = (nameStr) => {
 
 
 export default function TeachersDashboard() {
-  const { teachers, setTeachers, loading, refreshTeachers } = useData();
+  const { teachers, setTeachers, loading, refreshTeachers, availability, setAvailability, refreshAvailability } = useData();
   const [search, setSearch] = useState("");
   
   // Real Email Sending States
@@ -88,28 +88,18 @@ export default function TeachersDashboard() {
   };
 
   const fetchTeachers = async () => {
-    await refreshTeachers();
+    if (teachers.length === 0) {
+      await refreshTeachers();
+    } else {
+      refreshTeachers(); // Silent background refresh
+    }
   };
 
   const fetchAvailability = async () => {
-    try {
-      const { data, error } = await supabase.from("teacher_availability").select("*");
-      if (error) throw error;
-      if (!data || data.length === 0) {
-        setAvailabilityBlocks([]);
-        return;
-      }
-      setAvailabilityBlocks(data.map(b => ({
-        id: b.id,
-        teacherId: b.teacher_id,
-        day: b.day,
-        type: b.type,
-        startTime: b.start_time,
-        endTime: b.end_time,
-        description: b.description || ""
-      })));
-    } catch (err) {
-      console.error("Error cargando disponibilidad:", err);
+    if (availability.length === 0) {
+      await refreshAvailability();
+    } else {
+      refreshAvailability(); // Silent background refresh
     }
   };
 
@@ -123,6 +113,11 @@ export default function TeachersDashboard() {
   const [activeSubTab, setActiveSubTab] = useState("lista");
   const [selectedTeacherId, setSelectedTeacherId] = useState("");
   const [availabilityBlocks, setAvailabilityBlocks] = useState([]);
+  useEffect(() => {
+    if (availability && availability.length > 0) {
+      setAvailabilityBlocks(availability);
+    }
+  }, [availability]);
   const [classesList, setClassesList] = useState([]);
 
   useEffect(() => {
@@ -232,7 +227,7 @@ export default function TeachersDashboard() {
           description: blockForm.description
         }]).select();
         if (error) throw error;
-        setAvailabilityBlocks(prev => [...prev, {
+        const newBlock = {
           id: data[0].id,
           teacherId: selectedTeacherId,
           day: blockForm.day,
@@ -240,7 +235,9 @@ export default function TeachersDashboard() {
           startTime: start,
           endTime: end,
           description: blockForm.description
-        }]);
+        };
+        setAvailabilityBlocks(prev => [...prev, newBlock]);
+        setAvailability(prev => [...prev, newBlock]);
         showToast("✅ Bloque de disponibilidad registrado.");
       } else {
         const { error } = await supabase.from("teacher_availability").update({
@@ -251,9 +248,11 @@ export default function TeachersDashboard() {
           description: blockForm.description
         }).eq("id", blockModal.block.id);
         if (error) throw error;
-        setAvailabilityBlocks(prev => prev.map(b => b.id === blockModal.block.id ? {
+        const updateFn = prev => prev.map(b => b.id === blockModal.block.id ? {
           ...b, day: blockForm.day, type: blockForm.type, startTime: start, endTime: end, description: blockForm.description
-        } : b));
+        } : b);
+        setAvailabilityBlocks(updateFn);
+        setAvailability(updateFn);
         showToast("✏️ Bloque de disponibilidad actualizado.");
       }
     } catch (err) {
@@ -264,7 +263,9 @@ export default function TeachersDashboard() {
 
   const handleDeleteBlock = async (blockId) => {
     await supabase.from("teacher_availability").delete().eq("id", blockId);
-    setAvailabilityBlocks(prev => prev.filter(b => b.id !== blockId));
+    const filterFn = prev => prev.filter(b => b.id !== blockId);
+    setAvailabilityBlocks(filterFn);
+    setAvailability(filterFn);
     showToast("🗑️ Bloque de disponibilidad eliminado.");
     setBlockModal({ open: false, mode: "add", block: null });
   };
@@ -275,7 +276,9 @@ export default function TeachersDashboard() {
     try {
       if (action === "habilitar_todo") {
         await supabase.from("teacher_availability").delete().eq("teacher_id", selectedTeacherId);
-        setAvailabilityBlocks(prev => prev.filter(b => b.teacherId !== selectedTeacherId));
+        const filterFn = prev => prev.filter(b => b.teacherId !== selectedTeacherId);
+        setAvailabilityBlocks(filterFn);
+        setAvailability(filterFn);
         showToast("✅ Se borraron todos los bloqueos. Disponibilidad completa.");
         return;
       }
@@ -292,10 +295,12 @@ export default function TeachersDashboard() {
       const { data, error } = await supabase.from("teacher_availability").insert(payloads).select();
       if (error) throw error;
       const newBlocks = data.map(b => ({ id: b.id, teacherId: b.teacher_id, day: b.day, type: b.type, startTime: b.start_time, endTime: b.end_time, description: b.description || "" }));
-      setAvailabilityBlocks(prev => [
+      const updateFn = prev => [
         ...prev.filter(b => b.teacherId !== selectedTeacherId || (action !== "bloquear_todo" && b.type === "dia_descanso")),
         ...newBlocks
-      ]);
+      ];
+      setAvailabilityBlocks(updateFn);
+      setAvailability(updateFn);
       if (action === "bloquear_todo") showToast("⛔ Se bloquearon todos los días de la semana.");
       else if (action === "bloquear_mananas") showToast("🌅 Se bloquearon las mañanas (07:00 a 12:00).");
       else showToast("🌇 Se bloquearon las tardes (13:00 a 21:00).");

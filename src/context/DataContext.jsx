@@ -12,12 +12,18 @@ const DataContext = createContext({
   setCourses: () => {},
   groups: [],
   setGroups: () => {},
+  schedules: [],
+  setSchedules: () => {},
+  availability: [],
+  setAvailability: () => {},
   loading: true,
   refreshAll: async () => {},
   refreshTeachers: async () => {},
   refreshStudents: async () => {},
   refreshCourses: async () => {},
   refreshGroups: async () => {},
+  refreshSchedules: async () => {},
+  refreshAvailability: async () => {},
 });
 
 export function DataProvider({ children }) {
@@ -25,6 +31,8 @@ export function DataProvider({ children }) {
   const [students, setStudents] = useState([]);
   const [courses, setCourses] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [schedules, setSchedules] = useState([]);
+  const [availability, setAvailability] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchTeachers = async () => {
@@ -97,33 +105,96 @@ export function DataProvider({ children }) {
     }
   };
 
+  const fetchSchedules = async () => {
+    try {
+      const { data, error } = await supabase.from("schedules").select("*");
+      if (error) throw error;
+      setSchedules(data || []);
+      return data || [];
+    } catch (err) {
+      console.error("Error loading schedules in context:", err);
+      return [];
+    }
+  };
+
+  const fetchAvailability = async () => {
+    try {
+      const { data, error } = await supabase.from("teacher_availability").select("*");
+      if (error) throw error;
+      
+      const mapped = (data || []).map(b => ({
+        id: b.id,
+        teacherId: b.teacher_id,
+        day: b.day,
+        type: b.type,
+        startTime: b.start_time,
+        endTime: b.end_time,
+        description: b.description || ""
+      }));
+      setAvailability(mapped);
+      return mapped;
+    } catch (err) {
+      console.error("Error loading availability in context:", err);
+      return [];
+    }
+  };
+
   const refreshAll = async () => {
     setLoading(true);
     await Promise.all([
       fetchTeachers(),
       fetchStudents(),
       fetchCourses(),
-      fetchGroups()
+      fetchGroups(),
+      fetchSchedules(),
+      fetchAvailability()
     ]);
     setLoading(false);
   };
 
   useEffect(() => {
-    const stored = typeof window !== "undefined" ? localStorage.getItem("ttp_user_session") : null;
-    if (stored) {
-      try {
-        const user = JSON.parse(stored);
-        if (user && user.role === "admin") {
-          refreshAll();
-        } else {
+    let active = true;
+    let didInitialLoad = false;
+
+    const checkSessionAndLoad = () => {
+      if (typeof window === "undefined" || !active) return;
+      const stored = localStorage.getItem("ttp_user_session");
+      if (stored) {
+        try {
+          const user = JSON.parse(stored);
+          if (user && user.role === "admin") {
+            if (!didInitialLoad) {
+              didInitialLoad = true;
+              refreshAll();
+            }
+          } else {
+            setLoading(false);
+          }
+        } catch (e) {
           setLoading(false);
         }
-      } catch (e) {
+      } else {
+        // Clear global cache upon logout
+        setTeachers([]);
+        setStudents([]);
+        setCourses([]);
+        setGroups([]);
+        setSchedules([]);
+        setAvailability([]);
         setLoading(false);
+        didInitialLoad = false;
       }
-    } else {
-      setLoading(false);
-    }
+    };
+
+    checkSessionAndLoad();
+
+    // Check periodically in case user logs in or out
+    const interval = setInterval(checkSessionAndLoad, 1000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
   return (
@@ -137,12 +208,18 @@ export function DataProvider({ children }) {
         setCourses,
         groups,
         setGroups,
+        schedules,
+        setSchedules,
+        availability,
+        setAvailability,
         loading,
         refreshAll,
         refreshTeachers: fetchTeachers,
         refreshStudents: fetchStudents,
         refreshCourses: fetchCourses,
         refreshGroups: fetchGroups,
+        refreshSchedules: fetchSchedules,
+        refreshAvailability: fetchAvailability,
       }}
     >
       {children}

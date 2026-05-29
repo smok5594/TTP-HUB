@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -6,6 +6,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { simulateSendWhatsApp, getInitialLogs, approvedTemplates } from "@/utils/whatsappSimulator";
 import Sidebar from "@/components/Sidebar";
 import { toast } from "sonner";
+import { useData } from "@/context/DataContext";
 
 
 export default function AdminDashboard() {
@@ -14,14 +15,14 @@ export default function AdminDashboard() {
 
   // Estado de visibilidad confidencial financiera
   const [hideSensitive, setHideSensitive] = useState(false);
-
-  // Estado de carga
   const [isLoading, setIsLoading] = useState(false);
 
-  // Estado de estudiantes cargados
-  const [students, setStudents] = useState([]);
-  const [coursesList, setCoursesList] = useState([]);
-  const [groupsList, setGroupsList] = useState([]);
+  const { students: cachedStudents, teachers: cachedTeachers, groups: cachedGroups, courses: cachedCourses } = useData();
+
+  // Estado de estudiantes, cursos y grupos cargados (Caché Global!)
+  const students = cachedStudents;
+  const coursesList = React.useMemo(() => cachedCourses.map(c => c.name), [cachedCourses]);
+  const groupsList = React.useMemo(() => cachedGroups.map(g => g.code), [cachedGroups]);
 
   // Estados de WhatsApp Gateway y Alertas en Tiempo Real
   const [whatsappLogs, setWhatsAppLogs] = useState(getInitialLogs());
@@ -272,32 +273,18 @@ export default function AdminDashboard() {
     const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
     const [
-      { data: studentsData },
-      { data: teachersData },
       { data: transactionsData },
-      { data: classesData },
-      { data: groupsData },
-      { data: coursesData },
-      { data: groupCodesData },
+      { data: classesData }
     ] = await Promise.all([
-      supabase.from("students").select("id, name, last_name, status, enrolled_date, current_course, current_group, phone, amount_due, payment_status"),
-      supabase.from("teachers").select("status, rate"),
       supabase.from("billing_transactions").select("amount, status"),
-      supabase.from("classes").select("status").eq("class_date", today),
-      supabase.from("groups").select("capacity, enrolled"),
-      supabase.from("courses").select("name").eq("status", "activo"),
-      supabase.from("groups").select("code").eq("status", "activo"),
+      supabase.from("classes").select("status").eq("class_date", today)
     ]);
 
-    const allStudents = studentsData || [];
-    const allTeachers = teachersData || [];
+    const allStudents = cachedStudents || [];
+    const allTeachers = cachedTeachers || [];
     const allTransactions = transactionsData || [];
     const allClasses = classesData || [];
-    const allGroups = groupsData || [];
-
-    setStudents(allStudents);
-    if (coursesData) setCoursesList(coursesData.map(c => c.name));
-    if (groupCodesData) setGroupsList(groupCodesData.map(g => g.code));
+    const allGroups = cachedGroups || [];
 
     if (allStudents.length > 0) {
       setWhatsappForm((prev) => {
@@ -331,10 +318,10 @@ export default function AdminDashboard() {
       if (s.status === "active" || s.status === "moroso") {
         const hasGroup = allGroups.some(
           (g) =>
-            g.title === s.current_group ||
-            g.title === s.current_course ||
-            (s.current_group && s.current_group.toLowerCase().includes(g.title.toLowerCase())) ||
-            (g.title && g.title.toLowerCase().includes(s.current_group?.toLowerCase()))
+            g.code === s.current_group ||
+            g.code === s.current_course ||
+            (s.current_group && s.current_group.toLowerCase().includes(g.code.toLowerCase())) ||
+            (g.code && g.code.toLowerCase().includes(s.current_group?.toLowerCase()))
         );
         if (hasGroup || s.current_group) {
           occupiedCapacity++;
@@ -439,11 +426,13 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-
     setIsLoading(true);
     fetchMetrics();
-    fetchActivities();
     setIsLoading(false);
+  }, [cachedStudents, cachedTeachers, cachedGroups, cachedCourses]);
+
+  useEffect(() => {
+    fetchActivities();
 
     // ⚡ Suscripción en Tiempo Real mediante Postgres Changes de Supabase
     const channel = supabase

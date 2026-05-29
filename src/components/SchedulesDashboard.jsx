@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { toast } from "sonner";
 import { supabase } from "@/utils/supabaseClient";
+import { useData } from "@/context/DataContext";
 
 export default function SchedulesDashboard() {
   // Estado para la búsqueda
@@ -82,28 +83,51 @@ export default function SchedulesDashboard() {
     type: "grupal", // "grupal", "privada", "club"
   });
 
-  // Lista de clases cargadas (Estado dinámico con estatus y enlaces Google Meet)
-  const [classes, setClasses] = useState([]);
+  const { 
+    teachers, 
+    courses, 
+    students: cachedStudents, 
+    schedules, 
+    setSchedules,
+    availability, 
+    refreshTeachers,
+    refreshCourses,
+    refreshStudents,
+    refreshSchedules,
+    refreshAvailability 
+  } = useData();
 
   // Asistencia de estudiantes inscritos en cada clase activa
   const [attendance, setAttendance] = useState({});
 
   const [isMeetGenerating, setIsMeetGenerating] = useState(false);
 
-  // Lista de profesores dinámicos de la base de datos
-  const [teachersList, setTeachersList] = useState([]);
+  // Mapeo dinámico de datos desde el caché global (0ms de espera!)
+  const classes = schedules;
+  const setClasses = setSchedules;
+  
+  const teachersList = teachers;
+  const coursesCatalog = React.useMemo(() => courses.filter(c => c.status === "activo"), [courses]);
+  const students = cachedStudents;
+  
+  // Disponibilidad de profesores mapeada desde la estructura del caché global
+  const teacherAvailability = React.useMemo(() => {
+    return availability.map(b => ({
+      id: b.id,
+      teacherId: b.teacherId,
+      teacher_id: b.teacherId,
+      day: b.day,
+      type: b.type,
+      startTime: b.startTime,
+      start_time: b.startTime,
+      endTime: b.endTime,
+      end_time: b.endTime,
+      description: b.description
+    }));
+  }, [availability]);
 
-  // Catálogo de cursos desde Configuración
-  const [coursesCatalog, setCoursesCatalog] = useState([]);
-
-  // Alumnos para calcular alertas de pago automáticamente
-  const [students, setStudents] = useState([]);
-
-  // Disponibilidad de profesores desde la base de datos
-  const [teacherAvailability, setTeacherAvailability] = useState([]);
-
-  // Cargar datos desde Supabase en el montaje
-  React.useEffect(() => {
+  // Cargar datos en el formulario y disparar refresco en segundo plano (silent refresh)
+  useEffect(() => {
     // Inicializar fechas por defecto del formulario de forma segura en Next.js
     setNewClass(prev => ({
       ...prev,
@@ -111,29 +135,26 @@ export default function SchedulesDashboard() {
       endDate: getEndCourseDateStr()
     }));
 
-    const loadData = async () => {
-      const [
-        { data: teachersData },
-        { data: coursesData },
-        { data: studentsData },
-        { data: schedulesData },
-        { data: availabilityData },
-      ] = await Promise.all([
-        supabase.from("teachers").select("id, name, specialty, status"),
-        supabase.from("courses").select("id, name, level, status").eq("status", "activo"),
-        supabase.from("students").select("id, name, last_name, status, current_group, current_course"),
-        supabase.from("schedules").select("*"),
-        supabase.from("teacher_availability").select("*"),
-      ]);
-
-      if (teachersData) setTeachersList(teachersData);
-      if (coursesData) setCoursesCatalog(coursesData);
-      if (studentsData) setStudents(studentsData);
-      if (schedulesData) setClasses(schedulesData);
-      if (availabilityData) setTeacherAvailability(availabilityData);
+    // Disparar refresco en segundo plano si ya hay datos, o cargar síncronamente si está vacío
+    const triggerSilentRefresh = async () => {
+      if (schedules.length === 0) {
+        await Promise.all([
+          refreshTeachers(),
+          refreshCourses(),
+          refreshStudents(),
+          refreshSchedules(),
+          refreshAvailability()
+        ]);
+      } else {
+        // Refresco silencioso en segundo plano
+        refreshTeachers();
+        refreshCourses();
+        refreshStudents();
+        refreshSchedules();
+        refreshAvailability();
+      }
     };
-
-    loadData();
+    triggerSilentRefresh();
   }, []);
 
   // Alumnos morosos/pendientes por clase — calculado automáticamente
