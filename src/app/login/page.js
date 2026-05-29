@@ -7,6 +7,7 @@ import { supabase } from "@/utils/supabaseClient";
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -44,7 +45,7 @@ export default function LoginPage() {
   const handleLoginSubmit = (e) => {
     e.preventDefault();
     if (!email) return;
-    performLogin(email.trim().toLowerCase());
+    performLogin(email.trim().toLowerCase(), password.trim());
   };
 
   const handleGoogleLogin = () => {
@@ -54,7 +55,7 @@ export default function LoginPage() {
     setTimeout(() => performLogin(targetEmail), 1200);
   };
 
-  const performLogin = async (targetEmail) => {
+  const performLogin = async (targetEmail, enteredPassword = "") => {
     setLoading(true);
     setError(null);
 
@@ -69,14 +70,19 @@ export default function LoginPage() {
       // Check teachers in Supabase
       const { data: teachers } = await supabase
         .from("teachers")
-        .select("id, name, email, specialty, status")
-        .ilike("email", targetEmail);
+        .select("id, name, email, specialty, status, ttp_user, ttp_pass");
 
       const matchedTeacher = (teachers || []).find(
-        (t) => t.email && t.email.toLowerCase() === targetEmail
+        (t) => (t.email && t.email.toLowerCase() === targetEmail) || 
+               (t.ttp_user && t.ttp_user.toLowerCase() === targetEmail)
       );
 
       if (matchedTeacher) {
+        if (enteredPassword && matchedTeacher.ttp_pass && matchedTeacher.ttp_pass !== enteredPassword) {
+          setLoading(false);
+          setError("La contraseña ingresada es incorrecta.");
+          return;
+        }
         role = "teacher";
         name = matchedTeacher.name;
         profile = matchedTeacher;
@@ -100,7 +106,7 @@ export default function LoginPage() {
           name = targetEmail.split("@")[0].toUpperCase();
         } else {
           setLoading(false);
-          setError("Por favor ingresa un correo electrónico válido.");
+          setError("Por favor ingresa un correo o usuario válido.");
           return;
         }
       }
@@ -203,18 +209,34 @@ export default function LoginPage() {
 
           {/* Formulario de Email */}
           <form onSubmit={handleLoginSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Dirección de Correo Electrónico
-              </label>
-              <input
-                type="text"
-                disabled={loading}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="ejemplo@ttp.mx"
-                className="w-full px-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl text-sm font-semibold text-white placeholder-slate-600 outline-none focus:border-[#e74d8a] focus:ring-1 focus:ring-[#e74d8a]/50 transition-all disabled:opacity-50"
-              />
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Usuario o Correo Electrónico
+                </label>
+                <input
+                  type="text"
+                  disabled={loading}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="ejemplo@ttp.mx o usuario"
+                  className="w-full px-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl text-sm font-semibold text-white placeholder-slate-600 outline-none focus:border-[#e74d8a] focus:ring-1 focus:ring-[#e74d8a]/50 transition-all disabled:opacity-50"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Contraseña
+                </label>
+                <input
+                  type="password"
+                  disabled={loading}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl text-sm font-semibold text-white placeholder-slate-600 outline-none focus:border-[#e74d8a] focus:ring-1 focus:ring-[#e74d8a]/50 transition-all disabled:opacity-50"
+                />
+              </div>
             </div>
 
             <button

@@ -316,6 +316,30 @@ export default function TeachersDashboard() {
     { label: "Alumnos Atendidos", value: teachers.reduce((s, t) => s + (t.status === "activo" ? t.students : 0), 0), icon: "school", color: "text-purple-600 bg-purple-50" },
   ];
 
+  const handleGenerateRandomPassword = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let pass = "ttp_";
+    for (let i = 0; i < 6; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setFormData(p => ({ ...p, ttp_pass: pass }));
+    showToast("✅ Contraseña aleatoria generada.");
+  };
+
+  const handleCopyCredentials = (teacherNameValue) => {
+    const userVal = formData.ttp_user;
+    const passVal = formData.ttp_pass;
+    if (!userVal || !passVal) {
+      showToast("⛔ Usuario y contraseña son necesarios para copiar.");
+      return;
+    }
+    const text = `Hola ${teacherNameValue || formData.name || "Profesor"},\n\nAquí están tus credenciales de acceso para TTP Hub Portal:\n🔗 Plataforma: https://ttp-hub.vercel.app/login\n👤 Usuario: ${userVal}\n🔑 Contraseña: ${passVal}\n\nPor favor, guarda estos accesos de forma segura.`;
+    
+    navigator.clipboard.writeText(text)
+      .then(() => showToast("📋 ¡Credenciales copiadas al portapapeles!"))
+      .catch(() => showToast("⛔ Error al copiar al portapapeles."));
+  };
+
   const handleAdd = async (e) => {
     e.preventDefault();
     try {
@@ -927,7 +951,24 @@ export default function TeachersDashboard() {
               <div className="grid grid-cols-2 gap-4 max-h-[55vh] overflow-y-auto pr-1">
                 <div className="col-span-2">
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nombre Completo *</label>
-                  <input required autoFocus value={formData.name} onChange={(e) => setFormData(p => ({ ...p, name: e.target.value }))} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/20" placeholder="Lic. Nombre Apellido" />
+                  <input required autoFocus value={formData.name} onChange={(e) => {
+                    const newName = e.target.value;
+                    setFormData(p => {
+                      const nameParts = newName.trim().toLowerCase().replace(/^(lic\.|prof\.|dr\.)\s+/i, "").split(/\s+/);
+                      let autoUser = "";
+                      if (nameParts.length >= 2) {
+                        autoUser = `${nameParts[0]}.${nameParts[nameParts.length - 1]}`;
+                      } else if (nameParts.length === 1) {
+                        autoUser = nameParts[0];
+                      }
+                      const shouldOverwrite = !p.ttp_user || p.ttp_user === `${p.name.trim().toLowerCase().replace(/^(lic\.|prof\.|dr\.)\s+/i, "").split(/\s+/)[0]}.${p.name.trim().toLowerCase().replace(/^(lic\.|prof\.|dr\.)\s+/i, "").split(/\s+/).slice(-1)[0]}`;
+                      return {
+                        ...p,
+                        name: newName,
+                        ttp_user: shouldOverwrite ? autoUser : p.ttp_user
+                      };
+                    });
+                  }} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/20" placeholder="Lic. Nombre Apellido" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Email *</label>
@@ -972,15 +1013,26 @@ export default function TeachersDashboard() {
                 {/* Subsección: Credenciales TTP Hub */}
                 <div className="col-span-2 border-t border-slate-100 pt-3 mt-1 space-y-2">
                   <span className="text-[10px] font-bold text-ttp-club uppercase tracking-wider block">Credenciales TTP Hub Portal</span>
-                  <div className="grid grid-cols-2 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
-                    <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Usuario TTP Hub</label>
-                      <input value={formData.ttp_user} onChange={(e) => setFormData(p => ({ ...p, ttp_user: e.target.value }))} className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="teacher.name" />
+                  <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Usuario TTP Hub</label>
+                        <input value={formData.ttp_user} onChange={(e) => setFormData(p => ({ ...p, ttp_user: e.target.value }))} className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="teacher.name" />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Contraseña TTP Hub</label>
+                        <div className="flex gap-2">
+                          <input type="text" value={formData.ttp_pass} onChange={(e) => setFormData(p => ({ ...p, ttp_pass: e.target.value }))} className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="••••••••" />
+                          <button type="button" onClick={handleGenerateRandomPassword} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 active:scale-95 transition-all">
+                            <span className="material-symbols-outlined text-xs">key</span> Generar
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Contraseña TTP Hub</label>
-                      <input type="text" value={formData.ttp_pass} onChange={(e) => setFormData(p => ({ ...p, ttp_pass: e.target.value }))} className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="••••••••" />
-                    </div>
+                    
+                    <button type="button" onClick={() => handleCopyCredentials(formData.name)} className="w-full py-2 border border-dashed border-ttp-club/30 bg-ttp-club/5 hover:bg-ttp-club/10 text-ttp-club text-[10px] font-bold rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all">
+                      <span className="material-symbols-outlined text-xs">content_copy</span> Copiar Credenciales de Acceso
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1063,15 +1115,26 @@ export default function TeachersDashboard() {
                 {/* Subsección: Credenciales TTP Hub */}
                 <div className="col-span-2 border-t border-slate-100 pt-3 mt-1 space-y-2">
                   <span className="text-[10px] font-bold text-ttp-club uppercase tracking-wider block">Credenciales TTP Hub Portal</span>
-                  <div className="grid grid-cols-2 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
-                    <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Usuario TTP Hub</label>
-                      <input value={formData.ttp_user} onChange={(e) => setFormData(p => ({ ...p, ttp_user: e.target.value }))} className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="teacher.name" />
+                  <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Usuario TTP Hub</label>
+                        <input value={formData.ttp_user} onChange={(e) => setFormData(p => ({ ...p, ttp_user: e.target.value }))} className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="teacher.name" />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Contraseña TTP Hub</label>
+                        <div className="flex gap-2">
+                          <input type="text" value={formData.ttp_pass} onChange={(e) => setFormData(p => ({ ...p, ttp_pass: e.target.value }))} className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="••••••••" />
+                          <button type="button" onClick={handleGenerateRandomPassword} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 active:scale-95 transition-all">
+                            <span className="material-symbols-outlined text-xs">key</span> Generar
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Contraseña TTP Hub</label>
-                      <input type="text" value={formData.ttp_pass} onChange={(e) => setFormData(p => ({ ...p, ttp_pass: e.target.value }))} className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="••••••••" />
-                    </div>
+                    
+                    <button type="button" onClick={() => handleCopyCredentials(formData.name)} className="w-full py-2 border border-dashed border-ttp-club/30 bg-ttp-club/5 hover:bg-ttp-club/10 text-ttp-club text-[10px] font-bold rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all">
+                      <span className="material-symbols-outlined text-xs">content_copy</span> Copiar Credenciales de Acceso
+                    </button>
                   </div>
                 </div>
               </div>
