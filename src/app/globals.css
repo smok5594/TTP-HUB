@@ -72,3 +72,8 @@ body {
   animation: modal-card-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
   /* will-change is set only for the animation duration via the keyframe itself */
 }
+
+/* Force visual uppercase on all text inputs/textareas (excluding password, email, date, etc.) */
+input[type="text"]:not(.no-uppercase), input[type="search"]:not(.no-uppercase), textarea:not(.no-uppercase), input:not([type="password"]):not([type="email"]):not([type="time"]):not([type="date"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]):not(.no-uppercase) {
+  text-transform: uppercase;
+}

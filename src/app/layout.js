@@ -1,6 +1,7 @@
 import { Montserrat, Inter } from "next/font/google";
 import AuthGuard from "@/components/AuthGuard";
 import { Toaster } from "sonner";
+import GlobalUppercaseListener from "@/components/GlobalUppercaseListener";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -35,6 +36,7 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className="min-h-full bg-ttp-slateBg text-slate-900 font-inter antialiased">
+        <GlobalUppercaseListener />
         <Toaster
           position="bottom-right"
           toastOptions={{
