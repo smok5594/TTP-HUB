@@ -77,6 +77,33 @@ export default function SettingsDashboard() {
   // ── Maestros disponibles (para seleccionar en cursos) ───────────────────────
   const [teachersList, setTeachersList] = useState([]);
 
+  // ── Correo de Sistema ───────────────────────────────────────────────────────
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [showSmtpPass, setShowSmtpPass] = useState(false);
+  const [savingSmtp, setSavingSmtp] = useState(false);
+
+  const handleSaveSmtp = async (e) => {
+    e.preventDefault();
+    setSavingSmtp(true);
+    try {
+      const { error: errUser } = await supabase
+        .from("system_settings")
+        .upsert({ key: "GMAIL_USER", value: smtpUser.trim().toLowerCase() });
+
+      const { error: errPass } = await supabase
+        .from("system_settings")
+        .upsert({ key: "GMAIL_PASS", value: smtpPass.trim().replace(/\s/g, "") });
+
+      if (errUser || errPass) throw new Error(errUser?.message || errPass?.message);
+      showToast("✅ Configuración de correo guardada e integrada.");
+    } catch (err) {
+      showToast(`⛔ Error: Asegúrate de ejecutar el script SQL en tu panel de Supabase para activar esta tabla.`);
+    } finally {
+      setSavingSmtp(false);
+    }
+  };
+
   const showToast = (msg) => {
     // Detect type from emoji prefix
     if (msg.startsWith("✅")) toast.success(msg.replace("✅ ", ""));
@@ -99,6 +126,17 @@ export default function SettingsDashboard() {
       if (g) setGroups(g);
       if (u) setUsers(u);
       if (t) setTeachersList(t);
+
+      // Cargar configuraciones de correo SMTP
+      try {
+        const { data: s } = await supabase.from("system_settings").select("*");
+        if (s) {
+          const uSetting = s.find(item => item.key === "GMAIL_USER")?.value || "";
+          const pSetting = s.find(item => item.key === "GMAIL_PASS")?.value || "";
+          setSmtpUser(uSetting);
+          setSmtpPass(pSetting);
+        }
+      } catch (e) {}
     };
     load();
   }, []);
@@ -107,6 +145,7 @@ export default function SettingsDashboard() {
     { id: "cursos",   label: "Cursos",            icon: "menu_book" },
     { id: "grupos",   label: "Grupos",             icon: "groups" },
     { id: "usuarios", label: "Usuarios y Accesos", icon: "manage_accounts" },
+    { id: "correo",   label: "Correo de Sistema",  icon: "mail" },
   ];
 
   // ── Handlers Cursos ─────────────────────────────────────────────────────────
@@ -476,6 +515,92 @@ export default function SettingsDashboard() {
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ── CORREO DE SISTEMA ───────────────────────────────────────────── */}
+              {activeTab === "correo" && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="font-montserrat font-bold text-slate-800 text-sm">Configuración de Correo Electrónico (Gmail SMTP)</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Configura la cuenta de Gmail del sistema para enviar avisos, credenciales y notificaciones a los maestros de forma directa y 100% gratuita.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSaveSmtp} className="bg-slate-50 border border-slate-200/50 p-6 rounded-3xl space-y-4 max-w-xl">
+                    <div>
+                      <label className={labelCls}>Cuenta de Gmail Remitente *</label>
+                      <input
+                        required
+                        type="email"
+                        value={smtpUser}
+                        onChange={(e) => setSmtpUser(e.target.value)}
+                        className={inputCls}
+                        placeholder="ejemplo@gmail.com"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1 font-medium">Esta cuenta se utilizará como remitente de todos los correos del portal.</p>
+                    </div>
+
+                    <div>
+                      <label className={labelCls}>Contraseña de Aplicación de Google (16 caracteres) *</label>
+                      <div className="flex gap-2">
+                        <input
+                          required
+                          type={showSmtpPass ? "text" : "password"}
+                          value={smtpPass}
+                          onChange={(e) => setSmtpPass(e.target.value)}
+                          className={`${inputCls} flex-1`}
+                          placeholder="•••• •••• •••• ••••"
+                          maxLength={16}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowSmtpPass(!showSmtpPass)}
+                          className="px-3 border border-slate-200 hover:bg-slate-100 text-slate-650 rounded-xl text-xs font-bold transition-all flex items-center justify-center bg-white cursor-pointer active:scale-95"
+                        >
+                          <span className="material-symbols-outlined text-base">
+                            {showSmtpPass ? "visibility_off" : "visibility"}
+                          </span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1.5 font-medium leading-relaxed">
+                        ⚠️ **No ingreses tu contraseña normal de Gmail**. Por seguridad, debes generar una contraseña de aplicación de 16 caracteres desde tu cuenta de Google.
+                      </p>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={savingSmtp}
+                      className="w-full py-2.5 bg-ttp-primary text-white rounded-xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-md shadow-ttp-primary/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {savingSmtp ? (
+                        <>
+                          <span className="material-symbols-outlined text-base animate-spin">sync</span>
+                          Guardando...
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-base">save</span>
+                          Guardar Configuración de Correo
+                        </>
+                      )}
+                    </button>
+                  </form>
+
+                  {/* Tutorial Card */}
+                  <div className="bg-sky-50 border border-sky-100 rounded-3xl p-6 space-y-4 max-w-xl">
+                    <div className="flex items-center gap-2.5 text-sky-800">
+                      <span className="material-symbols-outlined text-xl">info</span>
+                      <h4 className="font-montserrat font-bold text-sm">¿Cómo obtener tu Contraseña de Aplicación?</h4>
+                    </div>
+                    <ol className="text-xs text-sky-700 space-y-2 list-decimal list-inside font-medium leading-relaxed">
+                      <li>Ve a tu Cuenta de Google en <a href="https://myaccount.google.com" target="_blank" className="underline font-bold" rel="noopener noreferrer">myaccount.google.com</a>.</li>
+                      <li>Asegúrate de activar la **Verificación en 2 pasos** en la pestaña **Seguridad**.</li>
+                      <li>Busca **\"Contraseñas de aplicación\"** en la barra de búsqueda de arriba.</li>
+                      <li>Escribe un nombre (ej. `TTP Hub`), haz clic en **Crear** y copia el código de 16 letras amarillas. ¡Ese es el código que debes pegar aquí!</li>
+                    </ol>
+                  </div>
                 </div>
               )}
             </div>

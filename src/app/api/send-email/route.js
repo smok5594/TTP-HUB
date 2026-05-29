@@ -1,16 +1,36 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { supabase } from "@/utils/supabaseClient";
 
 export async function POST(request) {
   try {
     const { to, subject, text, html } = await request.json();
 
-    const gmailUser = process.env.GMAIL_USER;
-    const gmailPass = process.env.GMAIL_PASS;
+    let gmailUser = process.env.GMAIL_USER;
+    let gmailPass = process.env.GMAIL_PASS;
+
+    // Fallback: Si no existen en environment variables, consultar la base de datos
+    if (!gmailUser || !gmailPass) {
+      try {
+        const { data, error } = await supabase
+          .from("system_settings")
+          .select("*");
+        if (!error && data) {
+          const dbUser = data.find(item => item.key === "GMAIL_USER")?.value;
+          const dbPass = data.find(item => item.key === "GMAIL_PASS")?.value;
+          if (dbUser) gmailUser = dbUser;
+          if (dbPass) gmailPass = dbPass;
+        }
+      } catch (e) {
+        console.error("Error al obtener configuraciones de correo de la base de datos:", e);
+      }
+    }
 
     if (!gmailUser || !gmailPass) {
       return NextResponse.json(
-        { error: "Las credenciales de Gmail SMTP (GMAIL_USER y GMAIL_PASS) no están configuradas en el servidor (.env.local)." },
+        { 
+          error: "Las credenciales de Gmail SMTP no están configuradas. Por favor, confíguralas en tu panel de control (Configuración > Correo de Sistema) o mediante variables de entorno." 
+        },
         { status: 500 }
       );
     }

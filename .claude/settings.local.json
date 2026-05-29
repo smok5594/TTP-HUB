@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"c:\\\\\\\\Users\\\\\\\\alexa\\\\\\\\OneDrive\\\\\\\\Escritorio\\\\\\\\TTP\" -iname \"*plan*\" -o -iname \"*roadmap*\" -o -iname \"*implementation*\" -o -iname \"*TODO*\")",
+      "Bash(grep -E \"\\\\.md$|plan|roadmap|implementation|TODO\" -i)",
+      "Bash(npx next *)",
+      "PowerShell(gh --version 2>&1)",
+      "PowerShell(gh auth status 2>&1)",
+      "PowerShell(gh --version)",
+      "PowerShell(gh auth status)",
+      "PowerShell(Get-Command gh -ErrorAction SilentlyContinue)",
+      "PowerShell(git remote add origin https://github.com/smok5594/TTP-HUB.git 2>&1)",
+      "PowerShell(git add src/app/automations/ src/app/billing/ src/app/integrations/ src/app/login/ src/app/reports/ src/app/schedules/ src/app/settings/ src/app/students/ src/app/teachers/ src/components/ src/utils/ supabase_schema.sql src/app/globals.css src/app/layout.js src/app/page.js package.json package-lock.json 2>&1)",
+      "PowerShell(git commit -m \"Add full TTP Hub admin dashboard\")",
+      "PowerShell(git push -u origin master 2>&1)",
+      "PowerShell(git config --global credential.helper)",
+      "PowerShell(git remote set-url origin https://smok5594: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@github.com/smok5594/TTP-HUB.git)",
+      "PowerShell(git add src/components/TeachersDashboard.jsx supabase_schema.sql)",
+      "PowerShell(git commit -m \"Fix teachers data layer: Supabase as source of truth, real UUIDs, add teacher_availability table\")",
+      "PowerShell(git push origin master 2>&1)",
+      "PowerShell(git add src/components/TeachersDashboard.jsx)",
+      "PowerShell(git commit -m \"Fix delete teacher: trim whitespace in name comparison\")",
+      "PowerShell(git add src/components/Sidebar.jsx)",
+      "PowerShell(git commit -m \"Add version label to sidebar\")",
+      "PowerShell(git config user.email \"smok5594@hotmail.com\")",
+      "PowerShell(git config user.name \"smok5594\")",
+      "PowerShell(git config user.email)",
+      "PowerShell(git config user.name)",
+      "PowerShell(git commit --allow-empty -m \"Fix deploy: update git author email\")",
+      "PowerShell(git add src/components/AdminDashboard.jsx)",
+      "PowerShell(git commit -m \"Fix dashboard: count active teachers from Supabase, not localStorage\")"
+    ]
+  }
+}
