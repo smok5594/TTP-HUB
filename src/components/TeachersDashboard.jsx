@@ -605,87 +605,110 @@ export default function TeachersDashboard() {
                   <span className="text-[10px] font-bold text-slate-400">{filtered.length} maestros</span>
                 </div>
 
-                {/* Column headers */}
-                <div className="grid grid-cols-12 gap-2 px-6 py-3 bg-slate-50 border-b border-slate-100">
-                  <span className="col-span-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Maestro</span>
-                  <span className="col-span-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Especialidad</span>
-                  <span className="col-span-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Clases</span>
-                  <span className="col-span-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Alumnos</span>
-                  <span className="col-span-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Tarifa/h</span>
-                  <span className="col-span-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Estado</span>
-                  <span className="col-span-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Acciones</span>
-                </div>
-
-                <div className="divide-y divide-slate-50">
-                  {filtered.length === 0 && (
-                    <div className="py-12 text-center">
-                      <span className="material-symbols-outlined text-4xl text-slate-200">person_search</span>
-                      <p className="text-sm text-slate-400 font-medium mt-2">No se encontraron maestros</p>
-                    </div>
-                  )}
-                  {filtered.map((t) => (
-                    <div key={t.id} className="grid grid-cols-12 gap-2 px-6 py-4 items-center hover:bg-slate-50/60 transition-colors">
-                      {/* Name + contact */}
-                      <div className="col-span-3 flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-ttp-primary/10 text-ttp-primary font-extrabold font-montserrat text-sm flex items-center justify-center flex-shrink-0">
-                          {t.name.charAt(0)}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <p className="text-sm font-bold text-slate-800 truncate">{t.name}</p>
-                            {(() => {
-                              const blockedCount = availabilityBlocks.filter(b => b.teacherId === t.id && b.type !== "disponible").length;
-                              if (blockedCount > 0) {
-                                return (
-                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 border border-rose-100 text-rose-600 flex items-center gap-0.5 flex-shrink-0 animate-pulse" title={`${blockedCount} bloques no disponibles o con clase`}>
-                                    <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>event_busy</span>
-                                    {blockedCount} bloques
-                                  </span>
-                                );
-                              }
-                              return (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-50 border border-teal-100 text-teal-600 flex items-center gap-0.5 flex-shrink-0" title="Disponibilidad completa">
-                                  <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                                  Ok
-                                </span>
-                              );
-                            })()}
-                          </div>
-                          <p className="text-[10px] text-slate-400 font-medium truncate">{t.email}</p>
-                        </div>
-                      </div>
-                      <div className="col-span-3">
-                        <p className="text-xs font-semibold text-slate-600">{t.specialty}</p>
-                        <p className="text-[10px] text-slate-400">Desde {formatSinceDate(t.since)}</p>
-                      </div>
-                      <span className="col-span-1 text-center text-sm font-bold text-slate-700">{t.classes}</span>
-                      <span className="col-span-1 text-center text-sm font-bold text-slate-700">{t.students}</span>
-                      <span className="col-span-1 text-right text-xs font-bold text-slate-700">${t.rate}/h</span>
-                      <div className="col-span-1 flex justify-center">
-                        <span className={`text-[9px] font-bold px-2 py-1 rounded-full border ${
-                          t.status === "activo"
-                            ? "bg-teal-50 border-teal-200 text-teal-600"
-                            : "bg-amber-50 border-amber-200 text-amber-600"
-                        }`}>
-                          {t.status === "activo" ? "Activo" : "Suspendido"}
-                        </span>
-                      </div>
-                      <div className="col-span-2 flex items-center justify-end gap-1">
-                        <button onClick={() => openSendEmail(t)} title="Enviar Correo" className="p-1.5 rounded-lg hover:bg-sky-50 text-slate-400 hover:text-sky-600 transition-colors">
-                          <span className="material-symbols-outlined text-base">mail</span>
-                        </button>
-                        <button onClick={() => openEdit(t)} title="Editar" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
-                          <span className="material-symbols-outlined text-base">edit</span>
-                        </button>
-                        <button onClick={() => setSuspendModal(t)} title={t.status === "activo" ? "Suspender" : "Reactivar"} className={`p-1.5 rounded-lg transition-colors ${t.status === "activo" ? "hover:bg-amber-50 text-slate-400 hover:text-amber-600" : "hover:bg-teal-50 text-slate-400 hover:text-teal-600"}`}>
-                          <span className="material-symbols-outlined text-base">{t.status === "activo" ? "block" : "check_circle"}</span>
-                        </button>
-                        <button onClick={() => setDeleteModal(t)} title="Eliminar" className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
-                          <span className="material-symbols-outlined text-base">delete</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full min-w-[850px] border-collapse text-left">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        <th className="px-6 py-3 font-bold w-[25%]">Maestro</th>
+                        <th className="px-6 py-3 font-bold w-[25%]">Especialidad</th>
+                        <th className="px-6 py-3 font-bold text-center w-[8%]">Clases</th>
+                        <th className="px-6 py-3 font-bold text-center w-[8%]">Alumnos</th>
+                        <th className="px-6 py-3 font-bold text-right w-[10%]">Tarifa/h</th>
+                        <th className="px-6 py-3 font-bold text-center w-[12%]">Estado</th>
+                        <th className="px-6 py-3 font-bold text-right pr-6 w-[12%]">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filtered.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center">
+                            <span className="material-symbols-outlined text-4xl text-slate-200">person_search</span>
+                            <p className="text-sm text-slate-400 font-medium mt-2">No se encontraron maestros</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        filtered.map((t) => (
+                          <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
+                            {/* Name + contact */}
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-ttp-primary/10 text-ttp-primary font-extrabold font-montserrat text-sm flex items-center justify-center flex-shrink-0">
+                                  {t.name.charAt(0)}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <p className="text-sm font-bold text-slate-800 truncate max-w-[150px] md:max-w-none">{t.name}</p>
+                                    {(() => {
+                                      const blockedCount = availabilityBlocks.filter(b => b.teacherId === t.id && b.type !== "disponible").length;
+                                      if (blockedCount > 0) {
+                                        return (
+                                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 border border-rose-100 text-rose-600 flex items-center gap-0.5 flex-shrink-0 animate-pulse" title={`${blockedCount} bloques no disponibles o con clase`}>
+                                            <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>event_busy</span>
+                                            {blockedCount} bloques
+                                          </span>
+                                        );
+                                      }
+                                      return (
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-50 border border-teal-100 text-teal-600 flex items-center gap-0.5 flex-shrink-0" title="Disponibilidad completa">
+                                          <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                                          Ok
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 font-medium truncate max-w-[200px] md:max-w-none">{t.email}</p>
+                                </div>
+                              </div>
+                            </td>
+                            {/* Specialty */}
+                            <td className="px-6 py-4">
+                              <p className="text-xs font-semibold text-slate-600 truncate max-w-[200px] md:max-w-none">{t.specialty}</p>
+                              <p className="text-[10px] text-slate-400">Desde {formatSinceDate(t.since)}</p>
+                            </td>
+                            {/* Classes */}
+                            <td className="px-6 py-4 text-center text-sm font-bold text-slate-700">
+                              {t.classes}
+                            </td>
+                            {/* Students */}
+                            <td className="px-6 py-4 text-center text-sm font-bold text-slate-700">
+                              {t.students}
+                            </td>
+                            {/* Rate */}
+                            <td className="px-6 py-4 text-right text-xs font-bold text-slate-700">
+                              ${t.rate}/h
+                            </td>
+                            {/* Status */}
+                            <td className="px-6 py-4 text-center">
+                              <span className={`text-[9px] font-bold px-2 py-1 rounded-full border whitespace-nowrap ${
+                                t.status === "activo"
+                                  ? "bg-teal-50 border-teal-200 text-teal-600"
+                                  : "bg-amber-50 border-amber-200 text-amber-600"
+                              }`}>
+                                {t.status === "activo" ? "Activo" : "Suspendido"}
+                              </span>
+                            </td>
+                            {/* Actions */}
+                            <td className="px-6 py-4 text-right pr-6">
+                              <div className="flex items-center justify-end gap-1">
+                                <button onClick={() => openSendEmail(t)} title="Enviar Correo" className="p-1.5 rounded-lg hover:bg-sky-50 text-slate-400 hover:text-sky-600 transition-colors">
+                                  <span className="material-symbols-outlined text-base">mail</span>
+                                </button>
+                                <button onClick={() => openEdit(t)} title="Editar" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+                                  <span className="material-symbols-outlined text-base">edit</span>
+                                </button>
+                                <button onClick={() => setSuspendModal(t)} title={t.status === "activo" ? "Suspender" : "Reactivar"} className={`p-1.5 rounded-lg transition-colors ${t.status === "activo" ? "hover:bg-amber-50 text-slate-400 hover:text-amber-600" : "hover:bg-teal-50 text-slate-400 hover:text-teal-600"}`}>
+                                  <span className="material-symbols-outlined text-base">{t.status === "activo" ? "block" : "check_circle"}</span>
+                                </button>
+                                <button onClick={() => setDeleteModal(t)} title="Eliminar" className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
+                                  <span className="material-symbols-outlined text-base">delete</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </>
