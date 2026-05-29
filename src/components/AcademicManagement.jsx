@@ -1347,9 +1347,9 @@ export default function AcademicManagement({ showToast }) {
       {activeTab === "movimientos" && <TabMovimientos />}
 
       {/* Modals */}
-      <TransferModal />
-      <AssignModal />
-      <NewGroupModal />
+      {TransferModal()}
+      {AssignModal()}
+      {NewGroupModal()}
       
       {/* ===== GORGEOUS SETTLE CONFIRM MODAL ===== */}
       {settleConfirmModal && (
