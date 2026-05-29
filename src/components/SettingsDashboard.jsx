@@ -552,7 +552,7 @@ export default function SettingsDashboard() {
                           onChange={(e) => setSmtpPass(e.target.value)}
                           className={`${inputCls} flex-1`}
                           placeholder="•••• •••• •••• ••••"
-                          maxLength={16}
+                          maxLength={30}
                         />
                         <button
                           type="button"

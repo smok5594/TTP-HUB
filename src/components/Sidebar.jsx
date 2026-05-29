@@ -143,7 +143,7 @@ export default function Sidebar({ activeName }) {
         </button>
 
         <p className="text-center text-[9px] text-slate-300 font-medium pt-1 tracking-wide">
-          v1.6.7 · Gmail SMTP Integration · 28 May 2026
+          v1.6.8 · Gmail SMTP Integration · 28 May 2026
         </p>
       </div>
     </aside>
