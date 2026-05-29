@@ -20,7 +20,7 @@ export async function POST(request) {
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        from: "TTP Hub <onboarding@resend.dev>", // Sandbox sender, works out of the box. Custom domain can be used when verified in Resend dashboard.
+        from: process.env.RESEND_FROM_EMAIL || "TTP Hub <onboarding@resend.dev>", // Custom domain can be used when verified in Resend dashboard and added as RESEND_FROM_EMAIL env var.
         to: [to],
         subject: subject,
         text: text,
