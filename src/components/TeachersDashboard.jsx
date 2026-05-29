@@ -929,7 +929,7 @@ export default function TeachersDashboard() {
       {/* ===== MODAL: Agregar Maestro ===== */}
       {addModal && (
         <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.7)", backdropFilter: "blur(4px)" }} onClick={(e) => { if (e.target === e.currentTarget) setAddModal(false); }}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 modal-card">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 modal-card">
             <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 bg-slate-50">
               <div>
                 <h2 className="font-montserrat font-bold text-slate-800">Agregar Maestro</h2>
@@ -948,7 +948,7 @@ export default function TeachersDashboard() {
               }}
               className="p-7 space-y-4"
             >
-              <div className="grid grid-cols-2 gap-4 max-h-[55vh] overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-4 max-h-[55vh] overflow-y-auto overflow-x-hidden pr-3">
                 <div className="col-span-2">
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nombre Completo *</label>
                   <input required autoFocus value={formData.name} onChange={(e) => {
@@ -1021,9 +1021,9 @@ export default function TeachersDashboard() {
                       </div>
                       <div>
                         <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Contraseña TTP Hub</label>
-                        <div className="flex gap-2">
-                          <input type="text" value={formData.ttp_pass} onChange={(e) => setFormData(p => ({ ...p, ttp_pass: e.target.value }))} className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="••••••••" />
-                          <button type="button" onClick={handleGenerateRandomPassword} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 active:scale-95 transition-all">
+                        <div className="flex gap-2 min-w-0 items-center">
+                          <input type="text" value={formData.ttp_pass} onChange={(e) => setFormData(p => ({ ...p, ttp_pass: e.target.value }))} className="flex-1 min-w-0 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="••••••••" />
+                          <button type="button" onClick={handleGenerateRandomPassword} className="flex-shrink-0 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 active:scale-95 transition-all">
                             <span className="material-symbols-outlined text-xs">key</span> Generar
                           </button>
                         </div>
@@ -1048,7 +1048,7 @@ export default function TeachersDashboard() {
       {/* ===== MODAL: Editar Maestro ===== */}
       {editModal && (
         <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.7)", backdropFilter: "blur(4px)" }} onClick={(e) => { if (e.target === e.currentTarget) setEditModal(null); }}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 modal-card">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 modal-card">
             <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 bg-slate-50">
               <div>
                 <h2 className="font-montserrat font-bold text-slate-800">Editar Maestro</h2>
@@ -1067,7 +1067,7 @@ export default function TeachersDashboard() {
               }}
               className="p-7 space-y-4"
             >
-              <div className="grid grid-cols-2 gap-4 max-h-[55vh] overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-4 max-h-[55vh] overflow-y-auto overflow-x-hidden pr-3">
                 <div className="col-span-2">
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nombre Completo</label>
                   <input required autoFocus value={formData.name} onChange={(e) => setFormData(p => ({ ...p, name: e.target.value }))} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/20" />
@@ -1123,9 +1123,9 @@ export default function TeachersDashboard() {
                       </div>
                       <div>
                         <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Contraseña TTP Hub</label>
-                        <div className="flex gap-2">
-                          <input type="text" value={formData.ttp_pass} onChange={(e) => setFormData(p => ({ ...p, ttp_pass: e.target.value }))} className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="••••••••" />
-                          <button type="button" onClick={handleGenerateRandomPassword} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 active:scale-95 transition-all">
+                        <div className="flex gap-2 min-w-0 items-center">
+                          <input type="text" value={formData.ttp_pass} onChange={(e) => setFormData(p => ({ ...p, ttp_pass: e.target.value }))} className="flex-1 min-w-0 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/10" placeholder="••••••••" />
+                          <button type="button" onClick={handleGenerateRandomPassword} className="flex-shrink-0 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 active:scale-95 transition-all">
                             <span className="material-symbols-outlined text-xs">key</span> Generar
                           </button>
                         </div>
