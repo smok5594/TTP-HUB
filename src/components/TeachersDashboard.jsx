@@ -26,6 +26,49 @@ const emptyForm = {
 export default function TeachersDashboard() {
   const [teachers, setTeachers] = useState([]);
   const [search, setSearch] = useState("");
+  
+  // Real Email Sending States
+  const [emailModalTeacher, setEmailModalTeacher] = useState(null);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+
+  const openSendEmail = (t) => {
+    setEmailModalTeacher(t);
+    setEmailSubject("");
+    setEmailBody("");
+  };
+
+  const handleSendEmail = async (e) => {
+    e.preventDefault();
+    if (!emailSubject.trim() || !emailBody.trim()) {
+      showToast("❌ Por favor completa el asunto y el mensaje.");
+      return;
+    }
+    setEmailSending(true);
+    showToast("✉️ Enviando correo electrónico...");
+    try {
+      const response = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: emailModalTeacher.email,
+          subject: emailSubject.trim(),
+          text: emailBody.trim(),
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Fallo en el envío.");
+      showToast(`✅ Correo enviado con éxito a ${emailModalTeacher.name}`);
+      setEmailModalTeacher(null);
+      setEmailSubject("");
+      setEmailBody("");
+    } catch (err) {
+      showToast(`❌ Error: ${err.message}`);
+    } finally {
+      setEmailSending(false);
+    }
+  };
 
   const fetchTeachers = async () => {
     try {
@@ -611,8 +654,10 @@ export default function TeachersDashboard() {
                           {t.status === "activo" ? "Activo" : "Suspendido"}
                         </span>
                       </div>
-                      {/* Actions */}
                       <div className="col-span-2 flex items-center justify-end gap-1">
+                        <button onClick={() => openSendEmail(t)} title="Enviar Correo" className="p-1.5 rounded-lg hover:bg-sky-50 text-slate-400 hover:text-sky-600 transition-colors">
+                          <span className="material-symbols-outlined text-base">mail</span>
+                        </button>
                         <button onClick={() => openEdit(t)} title="Editar" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
                           <span className="material-symbols-outlined text-base">edit</span>
                         </button>
@@ -1320,6 +1365,56 @@ export default function TeachersDashboard() {
                 )}
                 <button type="button" onClick={() => setBlockModal({ open: false, mode: "add", block: null })} className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold text-sm hover:bg-slate-50 transition-all">Cancelar</button>
                 <button type="submit" className="flex-1 py-2.5 bg-ttp-primary text-white rounded-xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-md shadow-ttp-primary/20">Guardar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ===== MODAL: Enviar Correo a Maestro ===== */}
+      {emailModalTeacher && (
+        <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.7)", backdropFilter: "blur(4px)" }} onClick={(e) => { if (e.target === e.currentTarget) setEmailModalTeacher(null); }}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 modal-card">
+            <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 bg-slate-50">
+              <div>
+                <h2 className="font-montserrat font-bold text-slate-800">Enviar Correo Electrónico</h2>
+                <p className="text-xs text-slate-400 font-medium">Destinatario: {emailModalTeacher.name}</p>
+              </div>
+              <button onClick={() => setEmailModalTeacher(null)} className="w-8 h-8 rounded-xl bg-slate-200 hover:bg-slate-300 flex items-center justify-center transition-colors">
+                <span className="material-symbols-outlined text-slate-600 text-lg">close</span>
+              </button>
+            </div>
+            
+            <form onSubmit={handleSendEmail} className="p-7 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Para (Correo electrónico)</label>
+                <input type="text" readOnly value={emailModalTeacher.email} className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 cursor-not-allowed focus:outline-none" />
+              </div>
+              
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Asunto *</label>
+                <input required type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} disabled={emailSending} placeholder="Ej. Actualización de horario, Aviso importante..." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/20" />
+              </div>
+              
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Mensaje *</label>
+                <textarea required value={emailBody} onChange={(e) => setEmailBody(e.target.value)} disabled={emailSending} placeholder="Escribe el cuerpo del correo aquí..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/20 min-h-[150px] leading-relaxed" />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" disabled={emailSending} onClick={() => setEmailModalTeacher(null)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold text-sm hover:bg-slate-50 transition-all">Cancelar</button>
+                <button type="submit" disabled={emailSending} className="flex-1 py-2.5 bg-ttp-primary text-white rounded-xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-md shadow-ttp-primary/20 flex items-center justify-center gap-1.5">
+                  {emailSending ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-sm">send</span>
+                      <span>Enviar Correo</span>
+                    </>
+                  )}
+                </button>
               </div>
             </form>
           </div>
