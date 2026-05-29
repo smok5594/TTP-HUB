@@ -1077,20 +1077,20 @@ export default function BillingDashboard() {
                   <div>
                     <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">Ratio de Dispersión</p>
                     <h3 className="font-montserrat text-3xl font-extrabold text-teal-600">
-                      {teachersPayroll.length > 0 ? Math.round((teachersPayroll.filter(t => t.status === "paid").length / teachersPayroll.length) * 100) : 0}%
+                      {teachersPayroll.filter(t => t.hours > 0).length > 0 ? Math.round((teachersPayroll.filter(t => t.status === "paid").length / teachersPayroll.filter(t => t.hours > 0).length) * 100) : 0}%
                     </h3>
                     <p className="text-xs text-slate-500 font-semibold mt-3">
-                      {teachersPayroll.filter(t => t.status === "paid").length} de {teachersPayroll.length} liquidados
+                      {teachersPayroll.filter(t => t.status === "paid").length} de {teachersPayroll.filter(t => t.hours > 0).length} liquidados
                     </p>
                   </div>
                   <div className="relative h-16 w-16 flex-shrink-0">
                     <svg className="h-full w-full -rotate-90" viewBox="0 0 36 36">
                       <path className="stroke-slate-100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" strokeWidth="4"></path>
-                      <path className="stroke-teal-500" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" strokeDasharray={`${teachersPayroll.length > 0 ? Math.round((teachersPayroll.filter(t => t.status === "paid").length / teachersPayroll.length) * 100) : 0}, 100`} strokeLinecap="round" strokeWidth="4"></path>
+                      <path className="stroke-teal-500" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" strokeDasharray={`${teachersPayroll.filter(t => t.hours > 0).length > 0 ? Math.round((teachersPayroll.filter(t => t.status === "paid").length / teachersPayroll.filter(t => t.hours > 0).length) * 100) : 0}, 100`} strokeLinecap="round" strokeWidth="4"></path>
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="text-[10px] font-extrabold text-teal-600">
-                        {teachersPayroll.filter(t => t.status === "paid").length}/{teachersPayroll.length}
+                        {teachersPayroll.filter(t => t.status === "paid").length}/{teachersPayroll.filter(t => t.hours > 0).length}
                       </span>
                     </div>
                   </div>
@@ -1192,8 +1192,18 @@ export default function BillingDashboard() {
                               </td>
                               <td className="px-6 py-4 text-right">
                                 <div className="flex gap-2 justify-end items-center">
-                                  {pendingVal > 0 ? (
-                                    <button 
+                                  {t.hours === 0 ? (
+                                    <span className="text-[10px] font-bold text-slate-400 flex items-center gap-0.5 py-1 px-3">
+                                      <span className="material-symbols-outlined text-xs font-bold">schedule</span>
+                                      Sin horas
+                                    </span>
+                                  ) : t.status === "paid" ? (
+                                    <span className="text-[10px] font-bold text-teal-600 flex items-center gap-0.5 py-1 px-3">
+                                      <span className="material-symbols-outlined text-xs font-bold">check_circle</span>
+                                      Liquidado
+                                    </span>
+                                  ) : (
+                                    <button
                                       onClick={() => handleOpenPayModal(t)}
                                       className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-xs font-bold flex items-center gap-1 transition-all active:scale-95 shadow-sm"
                                       title="Pagar Nómina por SPEI"
@@ -1201,11 +1211,6 @@ export default function BillingDashboard() {
                                       <span className="material-symbols-outlined text-sm font-bold">payments</span>
                                       Pagar SPEI
                                     </button>
-                                  ) : (
-                                    <span className="text-[10px] font-bold text-teal-600 flex items-center gap-0.5 py-1 px-3">
-                                      <span className="material-symbols-outlined text-xs font-bold">check_circle</span>
-                                      Liquidado
-                                    </span>
                                   )}
                                   
                                   <button
