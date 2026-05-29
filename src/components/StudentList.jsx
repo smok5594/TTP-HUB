@@ -828,16 +828,11 @@ export default function StudentList() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Estatus de Pago</label>
-                  <select
-                    value={newStudent.payment_status}
-                    onChange={(e) => setNewStudent({...newStudent, payment_status: e.target.value})}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-ttp-primary/10 focus:border-ttp-primary text-sm font-medium text-slate-700 bg-white"
-                  >
-                    <option value="pendiente">Pendiente (Por pagar)</option>
-                    <option value="al_corriente">Pago realizado</option>
-                    <option value="moroso">Moroso</option>
-                    <option value="pago_fallido">Pago fallido</option>
-                  </select>
+                  <input
+                    disabled
+                    value="Pendiente (automático)"
+                    className="w-full px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm font-medium text-slate-400 cursor-not-allowed"
+                  />
                 </div>
               </div>
 
