@@ -129,54 +129,6 @@ export default function StudentList() {
     }
   }, []);
 
-  const handleTeacherSelect = (teacherName) => {
-    const t = formTeachers.find(x => x.name === teacherName);
-    setNewStudent(p => ({ 
-      ...p, 
-      teacher: teacherName, 
-      teacher_id: t ? t.id : null,
-      current_group: "", 
-      current_course: "", 
-      group_id: null,
-      course_id: null,
-      schedule: "", 
-      class_type: "grupal" 
-    }));
-  };
-
-  const handleGroupSelect = async (groupTitle) => {
-    const g = formGroups.find(gr => gr.title === groupTitle);
-    if (!g) return;
-
-    let resolvedCourseId = null;
-    if (g.course) {
-      const { data: cData } = await supabase.from("courses").select("id").ilike("name", g.course).limit(1);
-      if (cData && cData.length > 0) {
-        resolvedCourseId = cData[0].id;
-      }
-    }
-
-    let resolvedTeacherId = g.teacher_id || null;
-    let resolvedTeacherName = "";
-    if (resolvedTeacherId) {
-      const t = formTeachers.find(x => x.id === resolvedTeacherId);
-      resolvedTeacherName = t ? t.name : "";
-    }
-
-    setNewStudent(p => ({ 
-      ...p, 
-      current_group: g.title, 
-      current_course: g.course || g.title, 
-      group_id: g.id || null,
-      course_id: resolvedCourseId,
-      teacher_id: resolvedTeacherId || p.teacher_id,
-      teacher: resolvedTeacherName || p.teacher,
-      schedule: g.schedule, 
-      class_type: g.class_type || "grupal" 
-    }));
-  };
-
-  const CT_LABEL_FORM = { grupal: "Grupal", privada: "Privada", conversation_club: "Conversation Club" };
 
   // Control de vistas (Alumnos vs Gestión Académica)
   const [currentView, setCurrentView] = useState("students");
@@ -888,62 +840,6 @@ export default function StudentList() {
                   </select>
                 </div>
               </div>
-
-              {/* Maestro → filtra grupos disponibles */}
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Maestro Asignado</label>
-                <select
-                  value={newStudent.teacher}
-                  onChange={(e) => handleTeacherSelect(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-ttp-primary/10 focus:border-ttp-primary text-sm font-medium text-slate-700 bg-white"
-                >
-                  <option value="">— Selecciona un maestro —</option>
-                  {formTeachers.filter(t => t.status === "active" || t.status === "activo").map(t => (
-                    <option key={t.id} value={t.name}>{t.name} · {t.specialty}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Grupo/Horario — solo muestra grupos del maestro seleccionado */}
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Grupo / Horario
-                  {newStudent.teacher && formGroups.filter(g => g.teacher === newStudent.teacher).length === 0 && (
-                    <span className="ml-2 text-amber-500 normal-case font-medium">— Este maestro no tiene grupos asignados aún</span>
-                  )}
-                </label>
-                <select
-                  value={newStudent.current_group}
-                  onChange={(e) => handleGroupSelect(e.target.value)}
-                  disabled={!newStudent.teacher}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-ttp-primary/10 focus:border-ttp-primary text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">— Selecciona un grupo —</option>
-                  {formGroups
-                    .filter(g => !newStudent.teacher || g.teacher === newStudent.teacher)
-                    .map(g => (
-                      <option key={g.id} value={g.title}>
-                        {g.title} · {g.schedule}
-                      </option>
-                    ))
-                  }
-                </select>
-              </div>
-
-              {/* Info card auto-rellena cuando hay grupo seleccionado */}
-              {newStudent.current_group && newStudent.schedule && (
-                <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
-                  <span className="material-symbols-outlined text-ttp-primary text-xl flex-shrink-0">schedule</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-700">{newStudent.schedule}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {CT_LABEL_FORM[newStudent.class_type] || newStudent.class_type}
-                      {newStudent.teacher ? ` · ${newStudent.teacher}` : ""}
-                    </p>
-                  </div>
-                  <span className="text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full whitespace-nowrap">Auto-asignado</span>
-                </div>
-              )}
 
               {/* Próximo Pago */}
               {/* Fecha de Inicio y Próxima Fecha de Pago */}
