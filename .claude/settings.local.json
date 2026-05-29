@@ -28,7 +28,8 @@
       "PowerShell(git config user.name)",
       "PowerShell(git commit --allow-empty -m \"Fix deploy: update git author email\")",
       "PowerShell(git add src/components/AdminDashboard.jsx)",
-      "PowerShell(git commit -m \"Fix dashboard: count active teachers from Supabase, not localStorage\")"
+      "PowerShell(git commit -m \"Fix dashboard: count active teachers from Supabase, not localStorage\")",
+      "Bash(npx vercel *)"
     ]
   }
 }

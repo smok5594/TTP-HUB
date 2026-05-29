@@ -9,7 +9,13 @@ import { toast } from "sonner";
 import { useData } from "@/context/DataContext";
 
 export default function BillingDashboard() {
-  const { teachers: contextTeachers } = useData();
+  const {
+    teachers: contextTeachers,
+    transactions: contextTransactions,
+    refreshTeachers,
+    refreshStudents,
+    refreshTransactions,
+  } = useData();
 
   // Estado de búsqueda y filtros
   const [search, setSearch] = useState("");
@@ -24,7 +30,8 @@ export default function BillingDashboard() {
   // Estado para notificaciones Toast (via Sonner)
 
   // Lista de transacciones (con Supabase y fallback local interactivo)
-  const [transactions, setTransactions] = useState([]);
+  // Transacciones provienen del caché global del DataContext
+  const transactions = contextTransactions;
 
   // Formulario para Crear Nueva Factura
   const [newInvoice, setNewInvoice] = useState({
@@ -78,16 +85,7 @@ export default function BillingDashboard() {
     else toast(msg);
   };
 
-  // Carga de transacciones financieras desde Supabase
-  const fetchTransactions = async () => {
-    setIsLoading(true);
-    const { data } = await supabase
-      .from("billing_transactions")
-      .select("*")
-      .order("created_at", { ascending: false });
-    setTransactions(data || []);
-    setIsLoading(false);
-  };
+  // fetchTransactions ya no existe localmente — se usa refreshTransactions() del contexto global
 
   // Sincronizar nómina con los profesores reales del contexto global (incluye campos de Supabase)
   useEffect(() => {
@@ -166,9 +164,13 @@ export default function BillingDashboard() {
         webhookEventType,
         payload,
         showToast,
-        () => {
-          fetchTransactions();
-          fetchStudentsForSim(); // Recargar datos de alumnos
+        async () => {
+          // ⚡ Refrescar contexto global: students (status moroso) y transactions (cobros)
+          await Promise.all([
+            refreshTransactions(),
+            refreshStudents(),
+            fetchStudentsForSim(),
+          ]);
         }
       );
       setIsStripeSimulating(false);
@@ -192,7 +194,7 @@ export default function BillingDashboard() {
   };
 
   useEffect(() => {
-    fetchTransactions();
+    // transactions ya están en el contexto global — solo cargar datos locales de esta vista
     fetchStudentsForSim();
     fetchPayrollHistory();
   }, []);
@@ -239,14 +241,19 @@ export default function BillingDashboard() {
       }),
     ]);
 
-    // Actualizar estado local
+    // Actualizar estado local optimista
     setTeachersPayroll(prev =>
       prev.map(t => t.id === selectedTeacherForPay.id
         ? { ...t, amountPaid: amountPaidNew, status: "paid" }
         : t
       )
     );
-    await fetchPayrollHistory();
+
+    // ⚡ Re-sincronizar contexto global para actualizar Nómina Devengada, Sueldo Pendiente y Ratio
+    await Promise.all([
+      fetchPayrollHistory(),
+      refreshTeachers(),
+    ]);
 
     showToast(`💸 Transferencia SPEI de $${pendingAmount.toLocaleString()} MXN a ${selectedTeacherForPay.name} procesada con éxito.`);
     setPayProcessing(false);
@@ -294,6 +301,9 @@ export default function BillingDashboard() {
         : t
       )
     );
+
+    // ⚡ Re-sincronizar contexto para que Nómina Devengada y Ratio se recalculen en todos los dashboards
+    refreshTeachers();
 
     showToast(`📝 Datos de nómina de ${selectedTeacherForEdit.name} actualizados.`);
     setIsEditTeacherModalOpen(false);
@@ -410,24 +420,13 @@ export default function BillingDashboard() {
       if (error) throw error;
       showToast(`¡Factura "${newInvoice.description}" creada exitosamente en Supabase!`);
       setIsAddInvoiceOpen(false);
-      
-      // Recargar
-      fetchTransactions();
+      // ⚡ Realtime lo captura, pero forzamos sync del contexto global
+      refreshTransactions();
     } catch (err) {
       console.warn("No se pudo escribir en Supabase. Añadiendo de forma simulada local.");
-      
-      const simulatedTrans = {
-        id: `t-${Date.now()}`,
-        description: newInvoice.description,
-        amount: amountVal,
-        status: newInvoice.status,
-        category: newInvoice.category,
-        date: new Date().toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })
-      };
-
-      setTransactions((prev) => [simulatedTrans, ...prev]);
       setIsAddInvoiceOpen(false);
       showToast(`¡Factura "${newInvoice.description}" creada localmente (Simulado)!`);
+      refreshTransactions();
     }
 
     // Limpiar formulario
@@ -457,7 +456,8 @@ export default function BillingDashboard() {
       const { error } = await supabase.from("billing_transactions").insert(seedData);
       if (error) throw error;
       showToast("✅ Transacciones de tus estudiantes sembradas en Supabase.");
-      fetchTransactions();
+      // ⚡ Refrescar contexto global — actualiza KPIs en todos los dashboards
+      refreshTransactions();
     } catch (err) {
       showToast("⛔ Error al sembrar transacciones.");
     } finally {
@@ -475,12 +475,12 @@ export default function BillingDashboard() {
 
       if (error) throw error;
       showToast(`¡Pago de "${description}" cobrado con éxito!`);
-      fetchTransactions();
+      // ⚡ Realtime lo captura automáticamente, pero forzamos refresh por si acaso
+      refreshTransactions();
     } catch (err) {
-      setTransactions((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status: "processed" } : t))
-      );
       showToast(`¡Pago de "${description}" cobrado localmente (Simulado)!`);
+      // Actualización optimista en el contexto global
+      refreshTransactions();
     }
   };
 

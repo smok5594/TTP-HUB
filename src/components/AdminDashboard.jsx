@@ -17,7 +17,7 @@ export default function AdminDashboard() {
   const [hideSensitive, setHideSensitive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const { students: cachedStudents, teachers: cachedTeachers, groups: cachedGroups, courses: cachedCourses } = useData();
+  const { students: cachedStudents, teachers: cachedTeachers, groups: cachedGroups, courses: cachedCourses, transactions: cachedTransactions } = useData();
 
   // Estado de estudiantes, cursos y grupos cargados (Caché Global!)
   const students = cachedStudents;
@@ -272,17 +272,12 @@ export default function AdminDashboard() {
     const now = new Date();
     const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-    const [
-      { data: transactionsData },
-      { data: classesData }
-    ] = await Promise.all([
-      supabase.from("billing_transactions").select("amount, status"),
-      supabase.from("classes").select("status").eq("class_date", today)
-    ]);
+    const { data: classesData } = await supabase.from("classes").select("status").eq("class_date", today);
 
     const allStudents = cachedStudents || [];
     const allTeachers = cachedTeachers || [];
-    const allTransactions = transactionsData || [];
+    // ⚡ Usar caché global de transacciones — ya sincronizado por Realtime en DataContext
+    const allTransactions = cachedTransactions || [];
     const allClasses = classesData || [];
     const allGroups = cachedGroups || [];
 
@@ -429,21 +424,17 @@ export default function AdminDashboard() {
     setIsLoading(true);
     fetchMetrics();
     setIsLoading(false);
-  }, [cachedStudents, cachedTeachers, cachedGroups, cachedCourses]);
+  }, [cachedStudents, cachedTeachers, cachedGroups, cachedCourses, cachedTransactions]);
 
   useEffect(() => {
     fetchActivities();
 
-    // ⚡ Suscripción en Tiempo Real mediante Postgres Changes de Supabase
-    const channel = supabase
+    // ⚡ Suscripción en Tiempo Real a actividades recientes
+    const channelActivities = supabase
       .channel("supabase-realtime-activities")
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "recent_activities",
-        },
+        { event: "*", schema: "public", table: "recent_activities" },
         () => {
           fetchMetrics();
           fetchActivities();
@@ -452,7 +443,7 @@ export default function AdminDashboard() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channelActivities);
     };
   }, []);
 

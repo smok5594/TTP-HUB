@@ -16,6 +16,8 @@ const DataContext = createContext({
   setSchedules: () => {},
   availability: [],
   setAvailability: () => {},
+  transactions: [],
+  setTransactions: () => {},
   loading: true,
   refreshAll: async () => {},
   refreshTeachers: async () => {},
@@ -24,6 +26,7 @@ const DataContext = createContext({
   refreshGroups: async () => {},
   refreshSchedules: async () => {},
   refreshAvailability: async () => {},
+  refreshTransactions: async () => {},
 });
 
 export function DataProvider({ children }) {
@@ -33,6 +36,7 @@ export function DataProvider({ children }) {
   const [groups, setGroups] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [availability, setAvailability] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchTeachers = async () => {
@@ -40,10 +44,10 @@ export function DataProvider({ children }) {
       const { data: teachersData, error } = await supabase.from("teachers").select("*");
       if (error) throw error;
       if (!teachersData) return [];
-      
+
       const { data: classesData } = await supabase.from("classes").select("teacher_id");
       const { data: studentsData } = await supabase.from("students").select("teacher");
-      
+
       const mapped = teachersData.map(t => ({
         id: t.id,
         name: t.name,
@@ -127,7 +131,7 @@ export function DataProvider({ children }) {
     try {
       const { data, error } = await supabase.from("teacher_availability").select("*");
       if (error) throw error;
-      
+
       const mapped = (data || []).map(b => ({
         id: b.id,
         teacherId: b.teacher_id,
@@ -145,6 +149,22 @@ export function DataProvider({ children }) {
     }
   };
 
+  // ⚡ NUEVO: Caché global de transacciones de facturación
+  const fetchTransactions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("billing_transactions")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setTransactions(data || []);
+      return data || [];
+    } catch (err) {
+      console.error("Error loading transactions in context:", err);
+      return [];
+    }
+  };
+
   const refreshAll = async () => {
     setLoading(true);
     await Promise.all([
@@ -153,7 +173,8 @@ export function DataProvider({ children }) {
       fetchCourses(),
       fetchGroups(),
       fetchSchedules(),
-      fetchAvailability()
+      fetchAvailability(),
+      fetchTransactions(),
     ]);
     setLoading(false);
   };
@@ -187,6 +208,7 @@ export function DataProvider({ children }) {
         setGroups([]);
         setSchedules([]);
         setAvailability([]);
+        setTransactions([]);
         setLoading(false);
         didInitialLoad = false;
       }
@@ -200,6 +222,63 @@ export function DataProvider({ children }) {
     return () => {
       active = false;
       clearInterval(interval);
+    };
+  }, []);
+
+  // ⚡ Suscripción Realtime global a billing_transactions
+  // Cualquier cambio en la tabla actualiza el caché de transacciones automáticamente
+  useEffect(() => {
+    const channel = supabase
+      .channel("global-billing-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "billing_transactions" },
+        () => {
+          fetchTransactions();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // ⚡ Suscripción Realtime global a students
+  // Cuando cambia el status/payment_status de un alumno se actualiza el caché
+  useEffect(() => {
+    const channel = supabase
+      .channel("global-students-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "students" },
+        () => {
+          fetchStudents();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // ⚡ Suscripción Realtime global a teachers
+  // Cuando se actualiza payroll_status/amount_paid de un maestro se re-sincroniza
+  useEffect(() => {
+    const channel = supabase
+      .channel("global-teachers-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "teachers" },
+        () => {
+          fetchTeachers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -218,6 +297,8 @@ export function DataProvider({ children }) {
         setSchedules,
         availability,
         setAvailability,
+        transactions,
+        setTransactions,
         loading,
         refreshAll,
         refreshTeachers: fetchTeachers,
@@ -226,6 +307,7 @@ export function DataProvider({ children }) {
         refreshGroups: fetchGroups,
         refreshSchedules: fetchSchedules,
         refreshAvailability: fetchAvailability,
+        refreshTransactions: fetchTransactions,
       }}
     >
       {children}
