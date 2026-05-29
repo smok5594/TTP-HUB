@@ -42,6 +42,7 @@ const getAutoUsername = (nameStr) => {
 export default function TeachersDashboard() {
   const [teachers, setTeachers] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
   
   // Real Email Sending States
   const [emailModalTeacher, setEmailModalTeacher] = useState(null);
@@ -87,6 +88,7 @@ export default function TeachersDashboard() {
   };
 
   const fetchTeachers = async () => {
+    setLoading(true);
     try {
       const { data: teachersData, error } = await supabase.from("teachers").select("*");
       if (error) throw error;
@@ -116,6 +118,8 @@ export default function TeachersDashboard() {
       setTeachers(mapped);
     } catch (err) {
       console.error("Error cargando profesores:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -369,10 +373,10 @@ export default function TeachersDashboard() {
   );
 
   const kpis = [
-    { label: "Total Maestros", value: teachers.length, icon: "person_4", color: "text-ttp-primary bg-ttp-primary/10" },
-    { label: "Activos", value: teachers.filter(t => t.status === "activo").length, icon: "check_circle", color: "text-teal-600 bg-teal-50" },
-    { label: "Clases esta Semana", value: teachers.reduce((s, t) => s + (t.status === "activo" ? t.classes : 0), 0), icon: "calendar_today", color: "text-sky-600 bg-sky-50" },
-    { label: "Alumnos Atendidos", value: teachers.reduce((s, t) => s + (t.status === "activo" ? t.students : 0), 0), icon: "school", color: "text-purple-600 bg-purple-50" },
+    { label: "Total Maestros", value: loading ? "..." : teachers.length, icon: "person_4", color: "text-ttp-primary bg-ttp-primary/10" },
+    { label: "Activos", value: loading ? "..." : teachers.filter(t => t.status === "activo").length, icon: "check_circle", color: "text-teal-600 bg-teal-50" },
+    { label: "Clases esta Semana", value: loading ? "..." : teachers.reduce((s, t) => s + (t.status === "activo" ? t.classes : 0), 0), icon: "calendar_today", color: "text-sky-600 bg-sky-50" },
+    { label: "Alumnos Atendidos", value: loading ? "..." : teachers.reduce((s, t) => s + (t.status === "activo" ? t.students : 0), 0), icon: "school", color: "text-purple-600 bg-purple-50" },
   ];
 
   const handleGenerateRandomPassword = () => {
@@ -619,7 +623,14 @@ export default function TeachersDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filtered.length === 0 ? (
+                      {loading ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center">
+                            <span className="material-symbols-outlined text-4xl text-ttp-primary animate-spin">sync</span>
+                            <p className="text-sm text-slate-400 font-bold mt-2">Cargando profesores de la base de datos...</p>
+                          </td>
+                        </tr>
+                      ) : filtered.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="py-12 text-center">
                             <span className="material-symbols-outlined text-4xl text-slate-200">person_search</span>
