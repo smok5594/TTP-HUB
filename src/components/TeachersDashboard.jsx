@@ -596,7 +596,7 @@ export default function TeachersDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {loading ? (
+                      {loading && teachers.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="py-12 text-center">
                             <span className="material-symbols-outlined text-4xl text-ttp-primary animate-spin">sync</span>

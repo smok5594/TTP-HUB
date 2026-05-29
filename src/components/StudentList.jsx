@@ -579,7 +579,7 @@ export default function StudentList() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
-                  {isLoading ? (
+                  {isLoading && allStudents.length === 0 ? (
                     <tr>
                       <td colSpan="8" className="px-6 py-10 text-center text-slate-400 font-medium">
                         Cargando base de datos de estudiantes...
