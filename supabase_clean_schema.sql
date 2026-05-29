@@ -1,14 +1,79 @@
 -- ====================================================================
 -- TTP HUB ADMIN DASHBOARD - CLEAN INITIALIZATION SCHEMA
--- Run this script in the SQL Editor of your Supabase Project to create all tables.
--- This script does NOT insert any mock/seed data, ensuring a clean database.
+-- Run this script in the SQL Editor of your Supabase Project.
+-- This script completely resets the database, creating all modern tables,
+-- columns, and relational keys with ZERO mock/seed data.
+-- WARNING: This drops existing tables. Use caution in production.
 -- ====================================================================
+
+-- 1. CLEANUP EXISTING TABLES (Safe Reset)
+DROP TABLE IF EXISTS recent_activities CASCADE;
+DROP TABLE IF EXISTS classes CASCADE;
+DROP TABLE IF EXISTS teacher_availability CASCADE;
+DROP TABLE IF EXISTS schedules CASCADE;
+DROP TABLE IF EXISTS system_users CASCADE;
+DROP TABLE IF EXISTS billing_transactions CASCADE;
+DROP TABLE IF EXISTS students CASCADE;
+DROP TABLE IF EXISTS groups CASCADE;
+DROP TABLE IF EXISTS courses CASCADE;
+DROP TABLE IF EXISTS teachers CASCADE;
+DROP TABLE IF EXISTS group_occupancy CASCADE;
 
 -- Enable uuid-ossp extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. STUDENTS TABLE
-CREATE TABLE IF NOT EXISTS students (
+-- 2. CREATE TEACHERS TABLE
+CREATE TABLE teachers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    specialty VARCHAR(100),
+    rate NUMERIC(10, 2) DEFAULT 250.00,
+    since DATE DEFAULT CURRENT_DATE,
+    birthdate DATE,
+    burlington_user VARCHAR(255) DEFAULT '',
+    burlington_pass VARCHAR(255) DEFAULT '',
+    ttp_user VARCHAR(255) DEFAULT '',
+    ttp_pass VARCHAR(255) DEFAULT '',
+    completed_hours NUMERIC(10, 2) DEFAULT 0.00,
+    max_students INTEGER DEFAULT 20,
+    class_types TEXT[] DEFAULT '{}',
+    status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'on_leave'))
+);
+
+-- 3. CREATE COURSES TABLE
+CREATE TABLE courses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    level VARCHAR(50) DEFAULT '',
+    custom_level VARCHAR(100) DEFAULT '',
+    duration_type VARCHAR(20) DEFAULT 'months',
+    duration VARCHAR(100) DEFAULT '',
+    course_start_date DATE,
+    course_end_date DATE,
+    price NUMERIC(10,2) DEFAULT 0,
+    class_type VARCHAR(50) DEFAULT 'grupal',
+    allowed_teachers JSONB DEFAULT '[]',
+    status VARCHAR(20) DEFAULT 'activo',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 4. CREATE GROUPS TABLE
+CREATE TABLE groups (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(100) NOT NULL,
+    course VARCHAR(255) DEFAULT '',
+    teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL,
+    schedule VARCHAR(255) DEFAULT '',
+    capacity INTEGER DEFAULT 15,
+    enrolled INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'activo',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 5. CREATE STUDENTS TABLE
+CREATE TABLE students (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -34,14 +99,57 @@ CREATE TABLE IF NOT EXISTS students (
     suspension_date DATE DEFAULT NULL,
     suspension_reason TEXT DEFAULT NULL,
     course_history JSONB DEFAULT '[]',
+    enrollments JSONB DEFAULT '[]',
     admin_notes TEXT DEFAULT '',
     academic_notes TEXT DEFAULT '',
     burlington_user VARCHAR(255) DEFAULT '',
-    certificates_issued INTEGER DEFAULT 0
+    certificates_issued INTEGER DEFAULT 0,
+    status_mode VARCHAR(20) DEFAULT 'auto',
+    last_connection_date DATE DEFAULT NULL,
+    
+    -- Relational UUID Keys
+    teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL,
+    group_id UUID REFERENCES groups(id) ON DELETE SET NULL,
+    course_id UUID REFERENCES courses(id) ON DELETE SET NULL
 );
 
--- 2. GROUP OCCUPANCY TABLE
-CREATE TABLE IF NOT EXISTS group_occupancy (
+-- 6. CREATE SCHEDULES TABLE
+CREATE TABLE schedules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title VARCHAR(255) NOT NULL,
+    teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL,
+    teacher VARCHAR(255) DEFAULT '',
+    group_name VARCHAR(255) DEFAULT '',
+    level VARCHAR(100) DEFAULT '',
+    daysSelected JSONB DEFAULT '[]',
+    slot VARCHAR(10) DEFAULT '08:00',
+    startTime VARCHAR(10) DEFAULT '08:00',
+    endTime VARCHAR(10) DEFAULT '09:30',
+    time VARCHAR(100) DEFAULT '08:00 - 09:30',
+    startDate DATE,
+    endDate DATE,
+    capacity INTEGER DEFAULT 15,
+    type VARCHAR(50) DEFAULT 'grupal',
+    status VARCHAR(50) DEFAULT 'scheduled',
+    meetLink VARCHAR(255) DEFAULT '',
+    checkInTime VARCHAR(10) DEFAULT NULL,
+    paymentAlert BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 7. CREATE SYSTEM USERS TABLE
+CREATE TABLE system_users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    role VARCHAR(50) DEFAULT 'Teacher',
+    status VARCHAR(20) DEFAULT 'activo',
+    last_login TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 8. CREATE GROUP OCCUPANCY TABLE
+CREATE TABLE group_occupancy (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     group_name VARCHAR(100) NOT NULL,
     capacity INTEGER DEFAULT 15 NOT NULL,
@@ -49,8 +157,8 @@ CREATE TABLE IF NOT EXISTS group_occupancy (
     CONSTRAINT check_capacity CHECK (enrolled_students <= capacity)
 );
 
--- 3. BILLING TRANSACTIONS TABLE
-CREATE TABLE IF NOT EXISTS billing_transactions (
+-- 9. CREATE BILLING TRANSACTIONS TABLE
+CREATE TABLE billing_transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     description VARCHAR(255) NOT NULL,
@@ -63,28 +171,8 @@ CREATE TABLE IF NOT EXISTS billing_transactions (
     method VARCHAR(50) DEFAULT 'Efectivo'
 );
 
--- 4. TEACHERS TABLE
-CREATE TABLE IF NOT EXISTS teachers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255),
-    phone VARCHAR(50),
-    specialty VARCHAR(100),
-    rate NUMERIC(10, 2) DEFAULT 250.00,
-    since DATE DEFAULT CURRENT_DATE,
-    birthdate DATE,
-    burlington_user VARCHAR(255) DEFAULT '',
-    burlington_pass VARCHAR(255) DEFAULT '',
-    ttp_user VARCHAR(255) DEFAULT '',
-    ttp_pass VARCHAR(255) DEFAULT '',
-    completed_hours NUMERIC(10, 2) DEFAULT 0.00,
-    max_students INTEGER DEFAULT 20,
-    class_types TEXT[] DEFAULT '{}',
-    status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'on_leave'))
-);
-
--- 5. CLASSES TABLE
-CREATE TABLE IF NOT EXISTS classes (
+-- 10. CREATE CLASSES TABLE
+CREATE TABLE classes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(255) NOT NULL,
     teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL,
@@ -92,8 +180,8 @@ CREATE TABLE IF NOT EXISTS classes (
     status VARCHAR(50) DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'in_progress', 'completed'))
 );
 
--- 6. TEACHER AVAILABILITY TABLE
-CREATE TABLE IF NOT EXISTS teacher_availability (
+-- 11. CREATE TEACHER AVAILABILITY TABLE
+CREATE TABLE teacher_availability (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
     day VARCHAR(20) NOT NULL,
@@ -103,67 +191,8 @@ CREATE TABLE IF NOT EXISTS teacher_availability (
     description TEXT DEFAULT ''
 );
 
--- 7. COURSES TABLE
-CREATE TABLE IF NOT EXISTS courses (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255) NOT NULL,
-    level VARCHAR(50) DEFAULT '',
-    custom_level VARCHAR(100) DEFAULT '',
-    duration_type VARCHAR(20) DEFAULT 'months',
-    duration VARCHAR(100) DEFAULT '',
-    course_start_date DATE,
-    course_end_date DATE,
-    price NUMERIC(10,2) DEFAULT 0,
-    class_type VARCHAR(50) DEFAULT 'grupal',
-    allowed_teachers JSONB DEFAULT '[]',
-    status VARCHAR(20) DEFAULT 'activo',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
--- 8. GROUPS TABLE
-CREATE TABLE IF NOT EXISTS groups (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    code VARCHAR(100) NOT NULL,
-    course VARCHAR(255) DEFAULT '',
-    teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL,
-    schedule VARCHAR(255) DEFAULT '',
-    capacity INTEGER DEFAULT 15,
-    enrolled INTEGER DEFAULT 0,
-    status VARCHAR(20) DEFAULT 'activo',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
--- 9. SCHEDULES TABLE
-CREATE TABLE IF NOT EXISTS schedules (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    title VARCHAR(255) NOT NULL,
-    teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL,
-    group_name VARCHAR(255) DEFAULT '',
-    level VARCHAR(100) DEFAULT '',
-    days_selected JSONB DEFAULT '[]',
-    start_time VARCHAR(10) DEFAULT '08:00',
-    end_time VARCHAR(10) DEFAULT '09:00',
-    start_date DATE,
-    end_date DATE,
-    capacity INTEGER DEFAULT 15,
-    class_type VARCHAR(50) DEFAULT 'grupal',
-    status VARCHAR(50) DEFAULT 'active',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
--- 10. SYSTEM USERS TABLE
-CREATE TABLE IF NOT EXISTS system_users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    role VARCHAR(50) DEFAULT 'Teacher',
-    status VARCHAR(20) DEFAULT 'activo',
-    last_login TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
--- 11. RECENT ACTIVITIES TABLE
-CREATE TABLE IF NOT EXISTS recent_activities (
+-- 12. CREATE RECENT ACTIVITIES TABLE
+CREATE TABLE recent_activities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     event VARCHAR(255) NOT NULL,
@@ -171,7 +200,7 @@ CREATE TABLE IF NOT EXISTS recent_activities (
     status VARCHAR(50) CHECK (status IN ('Completed', 'Processed', 'Alert', 'Archived'))
 );
 
--- 12. DYNAMIC METRICS VIEW
+-- 13. CREATE OR REPLACE VIEW dashboard_metrics
 CREATE OR REPLACE VIEW dashboard_metrics AS
 SELECT
     (SELECT COUNT(*) FROM students WHERE status = 'active') as active_students,
