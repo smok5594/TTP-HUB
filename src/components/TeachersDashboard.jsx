@@ -23,6 +23,22 @@ const emptyForm = {
   ttp_pass: ""
 };
 
+const getAutoUsername = (nameStr) => {
+  if (!nameStr) return "";
+  const clean = nameStr.trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quitar acentos
+    .replace(/^(lic\.|prof\.|dr\.|ing\.)\s+/i, "") // Quitar títulos comunes
+    .replace(/[^a-z0-9\s]/g, ""); // Conservar solo letras, números y espacios
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]}.${parts[parts.length - 1]}`;
+  } else if (parts.length === 1) {
+    return parts[0];
+  }
+  return "";
+};
+
+
 export default function TeachersDashboard() {
   const [teachers, setTeachers] = useState([]);
   const [search, setSearch] = useState("");
@@ -999,18 +1015,19 @@ export default function TeachersDashboard() {
                   <input required autoFocus value={formData.name} onChange={(e) => {
                     const newName = e.target.value;
                     setFormData(p => {
-                      const nameParts = newName.trim().toLowerCase().replace(/^(lic\.|prof\.|dr\.)\s+/i, "").split(/\s+/);
-                      let autoUser = "";
-                      if (nameParts.length >= 2) {
-                        autoUser = `${nameParts[0]}.${nameParts[nameParts.length - 1]}`;
-                      } else if (nameParts.length === 1) {
-                        autoUser = nameParts[0];
-                      }
-                      const shouldOverwrite = !p.ttp_user || p.ttp_user === `${p.name.trim().toLowerCase().replace(/^(lic\.|prof\.|dr\.)\s+/i, "").split(/\s+/)[0]}.${p.name.trim().toLowerCase().replace(/^(lic\.|prof\.|dr\.)\s+/i, "").split(/\s+/).slice(-1)[0]}`;
+                      const prevAutoUser = getAutoUsername(p.name);
+                      const shouldOverwrite = !p.ttp_user || p.ttp_user === prevAutoUser;
+                      const autoUser = getAutoUsername(newName);
+
+                      const prevAutoEmail = prevAutoUser ? `${prevAutoUser}@ttp.mx` : "";
+                      const shouldOverwriteEmail = !p.email || p.email === prevAutoEmail;
+                      const autoEmail = autoUser ? `${autoUser}@ttp.mx` : "";
+
                       return {
                         ...p,
                         name: newName,
-                        ttp_user: shouldOverwrite ? autoUser : p.ttp_user
+                        ttp_user: shouldOverwrite ? autoUser : p.ttp_user,
+                        email: shouldOverwriteEmail ? autoEmail : p.email
                       };
                     });
                   }} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/20" placeholder="Lic. Nombre Apellido" />

@@ -143,7 +143,7 @@ export default function Sidebar({ activeName }) {
         </button>
 
         <p className="text-center text-[9px] text-slate-300 font-medium pt-1 tracking-wide">
-          v1.6 · Real Mail Sync · 28 May 2026
+          v1.6.1 · Auto-Username Sync · 28 May 2026
         </p>
       </div>
     </aside>
