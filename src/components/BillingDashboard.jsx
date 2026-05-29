@@ -89,26 +89,46 @@ export default function BillingDashboard() {
     setIsLoading(false);
   };
 
-  // Sincronizar nómina con los profesores reales del contexto global
+  // Sincronizar nómina con los profesores reales del contexto global (incluye campos de Supabase)
   useEffect(() => {
     if (!contextTeachers || contextTeachers.length === 0) return;
-    setTeachersPayroll(prev => {
-      return contextTeachers.map(t => {
-        const existing = prev.find(p => p.id === t.id);
-        return existing ? { ...existing, name: t.name, specialty: t.specialty } : {
-          id: t.id,
-          name: t.name,
-          specialty: t.specialty || "Profesor de Inglés",
-          hours: 0,
-          rate: t.rate || 250,
-          amountPaid: 0,
-          status: "pending",
-          bank: "",
-          clabe: ""
-        };
-      });
-    });
+    setTeachersPayroll(
+      contextTeachers.map(t => ({
+        id: t.id,
+        name: t.name,
+        specialty: t.specialty || "Profesor de Inglés",
+        hours: t.hours || 0,
+        rate: t.rate || 250,
+        amountPaid: t.amount_paid || 0,
+        status: t.payroll_status || "pending",
+        bank: t.bank || "",
+        clabe: t.clabe || "",
+      }))
+    );
   }, [contextTeachers]);
+
+  // Cargar historial de pagos de nómina desde Supabase
+  const fetchPayrollHistory = async () => {
+    const { data } = await supabase
+      .from("payroll_records")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (data) {
+      setPayrollHistory(data.map(r => ({
+        id: r.id,
+        speiId: r.spei_id,
+        date: new Date(r.created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }),
+        time: new Date(r.created_at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+        teacherName: r.teacher_name,
+        concept: r.concept,
+        amount: r.amount,
+        reference: r.reference,
+        status: r.status,
+        bank: r.bank,
+        clabe: r.clabe_masked,
+      })));
+    }
+  };
 
   // Cargar estudiantes desde Supabase para la simulación de Stripe
   const fetchStudentsForSim = async () => {
@@ -174,6 +194,7 @@ export default function BillingDashboard() {
   useEffect(() => {
     fetchTransactions();
     fetchStudentsForSim();
+    fetchPayrollHistory();
   }, []);
 
   // ==========================================
@@ -188,53 +209,49 @@ export default function BillingDashboard() {
   };
 
   // Confirmar transferencia bancaria SPEI
-  const handleConfirmSpeiPayment = () => {
+  const handleConfirmSpeiPayment = async () => {
     if (!selectedTeacherForPay) return;
-    
     setPayProcessing(true);
-    
-    // Simular tiempo de respuesta bancaria (SPEI de Banxico)
-    setTimeout(() => {
-      const totalAccrued = selectedTeacherForPay.hours * selectedTeacherForPay.rate;
-      const pendingAmount = totalAccrued - selectedTeacherForPay.amountPaid;
-      const amountPaidNew = selectedTeacherForPay.amountPaid + pendingAmount;
-      
-      // Actualizar estado del profesor
-      setTeachersPayroll((prev) =>
-        prev.map((t) =>
-          t.id === selectedTeacherForPay.id
-            ? { ...t, amountPaid: amountPaidNew, status: "paid" }
-            : t
-        )
-      );
 
-      // Registrar en el historial de nómina
-      const trackingId = `SPEI-${Math.floor(10000 + Math.random() * 90000)}-TTP`;
-      const refNum = String(Math.floor(1000000 + Math.random() * 9000000));
-      
-      const newHistoryItem = {
-        id: `h-${Date.now()}`,
-        speiId: trackingId,
-        date: new Date().toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }),
-        time: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
-        teacherName: selectedTeacherForPay.name,
+    const totalAccrued = selectedTeacherForPay.hours * selectedTeacherForPay.rate;
+    const pendingAmount = totalAccrued - selectedTeacherForPay.amountPaid;
+    const amountPaidNew = selectedTeacherForPay.amountPaid + pendingAmount;
+    const trackingId = `SPEI-${Math.floor(10000 + Math.random() * 90000)}-TTP`;
+    const refNum = String(Math.floor(1000000 + Math.random() * 9000000));
+    const clabeMasked = selectedTeacherForPay.clabe.replace(/\s/g, "").replace(/.(?=.{4})/g, "*");
+
+    // Persistir en Supabase: actualizar teacher + insertar en payroll_records
+    await Promise.all([
+      supabase.from("teachers").update({
+        amount_paid: amountPaidNew,
+        payroll_status: "paid",
+      }).eq("id", selectedTeacherForPay.id),
+      supabase.from("payroll_records").insert({
+        teacher_id: selectedTeacherForPay.id,
+        teacher_name: selectedTeacherForPay.name,
         concept: payConcept,
         amount: pendingAmount,
+        spei_id: trackingId,
         reference: refNum,
-        status: "Exitoso",
         bank: selectedTeacherForPay.bank,
-        clabe: selectedTeacherForPay.clabe.replace(/\s/g, "").replace(/.(?=.{4})/g, "*") // Enmascarar CLABE excepto los últimos 4 dígitos
-      };
+        clabe_masked: clabeMasked,
+        status: "Exitoso",
+      }),
+    ]);
 
-      setPayrollHistory((prev) => [newHistoryItem, ...prev]);
-      
-      // Mostrar Toast premium
-      showToast(`💸 Transferencia SPEI de $${pendingAmount.toLocaleString()} MXN a ${selectedTeacherForPay.name} procesada con éxito.`);
-      
-      setPayProcessing(false);
-      setIsPayModalOpen(false);
-      setSelectedTeacherForPay(null);
-    }, 1500); // 1.5s delay to make it feel robust and premium!
+    // Actualizar estado local
+    setTeachersPayroll(prev =>
+      prev.map(t => t.id === selectedTeacherForPay.id
+        ? { ...t, amountPaid: amountPaidNew, status: "paid" }
+        : t
+      )
+    );
+    await fetchPayrollHistory();
+
+    showToast(`💸 Transferencia SPEI de $${pendingAmount.toLocaleString()} MXN a ${selectedTeacherForPay.name} procesada con éxito.`);
+    setPayProcessing(false);
+    setIsPayModalOpen(false);
+    setSelectedTeacherForPay(null);
   };
 
   // Abrir modal de ajuste
@@ -243,8 +260,8 @@ export default function BillingDashboard() {
     setIsEditTeacherModalOpen(true);
   };
 
-  // Guardar cambios del profesor (Horas / Tarifa)
-  const handleSaveTeacherEdit = (e) => {
+  // Guardar cambios del profesor (Horas / Tarifa / Banco / CLABE) → persiste en Supabase
+  const handleSaveTeacherEdit = async (e) => {
     e.preventDefault();
     if (!selectedTeacherForEdit) return;
 
@@ -259,25 +276,22 @@ export default function BillingDashboard() {
 
     const totalAccrued = hrs * rt;
     let newStatus = "pending";
-    if (paid >= totalAccrued) {
-      newStatus = "paid";
-    } else if (paid > 0) {
-      newStatus = "partial";
-    }
+    if (paid >= totalAccrued && totalAccrued > 0) newStatus = "paid";
+    else if (paid > 0) newStatus = "partial";
 
-    setTeachersPayroll((prev) =>
-      prev.map((t) =>
-        t.id === selectedTeacherForEdit.id
-          ? {
-              ...t,
-              hours: hrs,
-              rate: rt,
-              amountPaid: paid,
-              status: newStatus,
-              bank: selectedTeacherForEdit.bank,
-              clabe: selectedTeacherForEdit.clabe
-            }
-          : t
+    await supabase.from("teachers").update({
+      completed_hours: hrs,
+      rate: rt,
+      amount_paid: paid,
+      payroll_status: newStatus,
+      bank: selectedTeacherForEdit.bank,
+      clabe: selectedTeacherForEdit.clabe,
+    }).eq("id", selectedTeacherForEdit.id);
+
+    setTeachersPayroll(prev =>
+      prev.map(t => t.id === selectedTeacherForEdit.id
+        ? { ...t, hours: hrs, rate: rt, amountPaid: paid, status: newStatus, bank: selectedTeacherForEdit.bank, clabe: selectedTeacherForEdit.clabe }
+        : t
       )
     );
 

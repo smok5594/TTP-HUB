@@ -59,7 +59,13 @@ export function DataProvider({ children }) {
         ttp_pass: t.ttp_pass || "",
         classes: classesData?.filter(c => c.teacher_id === t.id).length || 0,
         students: studentsData?.filter(s => s.teacher === t.name).length || 0,
-        status: t.status === "active" ? "activo" : "suspendido"
+        status: t.status === "active" ? "activo" : "suspendido",
+        // Payroll fields
+        bank: t.bank || "",
+        clabe: t.clabe || "",
+        hours: t.completed_hours || 0,
+        amount_paid: t.amount_paid || 0,
+        payroll_status: t.payroll_status || "pending",
       }));
       setTeachers(mapped);
       return mapped;
