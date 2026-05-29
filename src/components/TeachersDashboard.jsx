@@ -1019,15 +1019,10 @@ export default function TeachersDashboard() {
                       const shouldOverwrite = !p.ttp_user || p.ttp_user === prevAutoUser;
                       const autoUser = getAutoUsername(newName);
 
-                      const prevAutoEmail = prevAutoUser ? `${prevAutoUser}@ttp.mx` : "";
-                      const shouldOverwriteEmail = !p.email || p.email === prevAutoEmail;
-                      const autoEmail = autoUser ? `${autoUser}@ttp.mx` : "";
-
                       return {
                         ...p,
                         name: newName,
-                        ttp_user: shouldOverwrite ? autoUser : p.ttp_user,
-                        email: shouldOverwriteEmail ? autoEmail : p.email
+                        ttp_user: shouldOverwrite ? autoUser : p.ttp_user
                       };
                     });
                   }} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-ttp-primary/20" placeholder="Lic. Nombre Apellido" />
