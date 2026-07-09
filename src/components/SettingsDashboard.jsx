@@ -61,8 +61,39 @@ export default function SettingsDashboard() {
   const { 
     courses, setCourses, 
     groups, setGroups, 
-    teachers: teachersList 
+    teachers: teachersList,
+    schedules
   } = useData();
+
+  const uniqueSchedules = React.useMemo(() => {
+    if (!schedules) return [];
+    const seen = new Set();
+    const list = [];
+    schedules.forEach(s => {
+      const days = Array.isArray(s.daysSelected) ? s.daysSelected.join(", ") : (s.day || "");
+      const timeRange = s.time || `${s.startTime || ""} - ${s.endTime || ""}`;
+      const formatted = `${days} · ${timeRange}`.trim();
+      if (formatted && formatted !== "·" && !seen.has(formatted)) {
+        seen.add(formatted);
+        list.push(formatted);
+      }
+    });
+    // Add default fallbacks to ensure options are available
+    const defaults = [
+      "Lunes y Miércoles 17:00–18:30",
+      "Lunes y Miércoles 18:00–19:30",
+      "Martes y Jueves 09:00–10:00",
+      "Viernes 19:00–20:30",
+      "Lunes, Miércoles y Viernes 16:00–17:00"
+    ];
+    defaults.forEach(d => {
+      if (!seen.has(d)) {
+        list.push(d);
+      }
+    });
+    return list;
+  }, [schedules]);
+
 
   // ── Cursos ──────────────────────────────────────────────────────────────────
   const [addCourseModal, setAddCourseModal] = useState(false);
@@ -137,7 +168,6 @@ export default function SettingsDashboard() {
 
   const tabs = [
     { id: "cursos",   label: "Cursos",            icon: "menu_book" },
-    { id: "grupos",   label: "Grupos",             icon: "groups" },
     { id: "usuarios", label: "Usuarios y Accesos", icon: "manage_accounts" },
     { id: "correo",   label: "Correo de Sistema",  icon: "mail" },
   ];
@@ -413,56 +443,6 @@ export default function SettingsDashboard() {
                 </div>
               )}
 
-              {/* ── GRUPOS ─────────────────────────────────────────────────────── */}
-              {activeTab === "grupos" && (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-montserrat font-bold text-slate-800">Grupos Activos</h3>
-                    <button onClick={() => { setGroupForm(emptyGroup); setAddGroupModal(true); }}
-                      className="bg-ttp-primary text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 hover:opacity-90 active:scale-95 transition-all shadow-md shadow-ttp-primary/20">
-                      <span className="material-symbols-outlined text-base">add</span> Nuevo Grupo
-                    </button>
-                  </div>
-
-                  {groups.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
-                      <span className="material-symbols-outlined text-4xl opacity-30">groups</span>
-                      <p className="text-sm font-semibold">No hay grupos registrados aún.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {groups.map((g) => (
-                        <div key={g.id} className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/60 bg-white">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0">
-                              <span className="font-montserrat font-extrabold text-sky-600 text-xs">{g.code}</span>
-                            </div>
-                            <div>
-                              <p className="font-bold text-slate-800 text-sm">{g.course}</p>
-                              <p className="text-[11px] text-slate-400 font-medium">{teacherName(g.teacher_id)} · {g.schedule} · {g.enrolled ?? 0}/{g.capacity} alumnos</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-16">
-                              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full ${(g.enrolled ?? 0) >= g.capacity ? "bg-rose-400" : "bg-teal-400"}`} style={{ width: `${Math.min(((g.enrolled ?? 0) / g.capacity) * 100, 100)}%` }} />
-                              </div>
-                            </div>
-                            <button onClick={() => { setGroupForm({ code: g.code, course: g.course, teacher_id: g.teacher_id || "", schedule: g.schedule, capacity: g.capacity }); setEditGroupModal(g); }}
-                              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
-                              <span className="material-symbols-outlined text-base">edit</span>
-                            </button>
-                            <button onClick={() => handleDeleteGroup(g)}
-                              className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
-                              <span className="material-symbols-outlined text-base">delete</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* ── USUARIOS ───────────────────────────────────────────────────── */}
               {activeTab === "usuarios" && (
@@ -1000,117 +980,6 @@ export default function SettingsDashboard() {
         </ModalWrapper>
       )}
 
-      {/* ── Modal Agregar Grupo ───────────────────────────────────────────────── */}
-      {addGroupModal && (
-        <ModalWrapper onClose={() => setAddGroupModal(false)}>
-          <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 bg-slate-50">
-            <h2 className="font-montserrat font-bold text-slate-800">Nuevo Grupo</h2>
-            <button onClick={() => setAddGroupModal(false)} className="w-8 h-8 rounded-xl bg-slate-200 hover:bg-slate-300 flex items-center justify-center">
-              <span className="material-symbols-outlined text-slate-600 text-lg">close</span>
-            </button>
-          </div>
-          <form 
-            onSubmit={handleAddGroup} 
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && e.target.tagName === "INPUT") {
-                e.preventDefault();
-              }
-            }}
-            className="p-7 space-y-4"
-          >
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Código *</label>
-                <input required autoFocus value={groupForm.code} onChange={e => setGroupForm(p => ({ ...p, code: e.target.value }))} placeholder="EMP-C" className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Cupo Máximo *</label>
-                <input required type="number" value={groupForm.capacity} onChange={e => setGroupForm(p => ({ ...p, capacity: e.target.value }))} className={inputCls} />
-              </div>
-              <div className="col-span-2">
-                <label className={labelCls}>Curso *</label>
-                <select required value={groupForm.course} onChange={e => setGroupForm(p => ({ ...p, course: e.target.value }))} className={inputCls}>
-                  <option value="">— Seleccionar curso —</option>
-                  {courses.filter(c => c.status === "activo").map(c => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className={labelCls}>Maestro</label>
-                <select value={groupForm.teacher_id} onChange={e => setGroupForm(p => ({ ...p, teacher_id: e.target.value }))} className={inputCls}>
-                  <option value="">— Sin maestro asignado —</option>
-                  {teachersList.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className={labelCls}>Horario</label>
-                <input value={groupForm.schedule} onChange={e => setGroupForm(p => ({ ...p, schedule: e.target.value }))} placeholder="Lun/Mié 08:00" className={inputCls} />
-              </div>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button type="button" onClick={() => setAddGroupModal(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold text-sm hover:bg-slate-50">Cancelar</button>
-              <button type="submit" className="flex-1 py-2.5 bg-ttp-primary text-white rounded-xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-md shadow-ttp-primary/20">Crear Grupo</button>
-            </div>
-          </form>
-        </ModalWrapper>
-      )}
-
-      {/* ── Modal Editar Grupo ────────────────────────────────────────────────── */}
-      {editGroupModal && (
-        <ModalWrapper onClose={() => setEditGroupModal(null)}>
-          <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 bg-slate-50">
-            <h2 className="font-montserrat font-bold text-slate-800">Editar Grupo {editGroupModal.code}</h2>
-            <button onClick={() => setEditGroupModal(null)} className="w-8 h-8 rounded-xl bg-slate-200 hover:bg-slate-300 flex items-center justify-center">
-              <span className="material-symbols-outlined text-slate-600 text-lg">close</span>
-            </button>
-          </div>
-          <form 
-            onSubmit={handleEditGroup} 
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && e.target.tagName === "INPUT") {
-                e.preventDefault();
-              }
-            }}
-            className="p-7 space-y-4"
-          >
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Código</label>
-                <input required autoFocus value={groupForm.code} onChange={e => setGroupForm(p => ({ ...p, code: e.target.value }))} className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Cupo</label>
-                <input type="number" value={groupForm.capacity} onChange={e => setGroupForm(p => ({ ...p, capacity: e.target.value }))} className={inputCls} />
-              </div>
-              <div className="col-span-2">
-                <label className={labelCls}>Curso</label>
-                <select value={groupForm.course} onChange={e => setGroupForm(p => ({ ...p, course: e.target.value }))} className={inputCls}>
-                  <option value="">— Seleccionar curso —</option>
-                  {courses.filter(c => c.status === "activo").map(c => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className={labelCls}>Maestro</label>
-                <select value={groupForm.teacher_id} onChange={e => setGroupForm(p => ({ ...p, teacher_id: e.target.value }))} className={inputCls}>
-                  <option value="">— Sin maestro asignado —</option>
-                  {teachersList.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className={labelCls}>Horario</label>
-                <input value={groupForm.schedule} onChange={e => setGroupForm(p => ({ ...p, schedule: e.target.value }))} className={inputCls} />
-              </div>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button type="button" onClick={() => setEditGroupModal(null)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold text-sm hover:bg-slate-50">Cancelar</button>
-              <button type="submit" className="flex-1 py-2.5 bg-ttp-primary text-white rounded-xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-md shadow-ttp-primary/20">Guardar</button>
-            </div>
-          </form>
-        </ModalWrapper>
-      )}
 
       {/* ── Modal Agregar Usuario ─────────────────────────────────────────────── */}
       {addUserModal && (

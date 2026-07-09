@@ -49,12 +49,23 @@ export default function StudentProfile({ id }) {
   // Cargar maestros y grupos desde Supabase para los selectores del formulario de edición
   useEffect(() => {
     const loadFormData = async () => {
-      const [{ data: teachersData }, { data: groupsData }] = await Promise.all([
+      const [{ data: teachersData }, { data: groupsData }, { data: coursesData }] = await Promise.all([
         supabase.from("teachers").select("id, name, email, specialty, status"),
-        supabase.from("groups").select("id, title, class_type, teacher_id, schedule, capacity"),
+        supabase.from("groups").select("id, code, course, teacher_id, schedule, capacity"),
+        supabase.from("courses").select("name, class_type"),
       ]);
       if (teachersData) setFormTeachers(teachersData);
-      if (groupsData) setFormGroups(groupsData);
+      if (groupsData) {
+        const resolved = groupsData.map(g => {
+          const matchCourse = coursesData?.find(c => c.name === g.course);
+          return {
+            ...g,
+            title: g.code || "",
+            class_type: matchCourse?.class_type || "grupal",
+          };
+        });
+        setFormGroups(resolved);
+      }
     };
     loadFormData();
   }, []);

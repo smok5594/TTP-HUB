@@ -159,11 +159,6 @@ export default function StudentList() {
       }]).select();
       if (error) throw error;
       setStudents(prev => [data[0], ...prev]);
-      setKpi(prev => ({
-        totalStudents: prev.totalStudents + 1,
-        attendance: "94.2%",
-        pendingPayments: newStudent.status === "moroso" ? prev.pendingPayments + 1 : prev.pendingPayments,
-      }));
       showToast(`✅ Estudiante ${newStudent.name} registrado exitosamente.`);
       setIsAddModalOpen(false);
       setNewStudent({
@@ -304,7 +299,7 @@ export default function StudentList() {
                   }`}
                 >
                   <span className="material-symbols-outlined text-sm font-bold">school</span>
-                  Cursos y Grupos
+                  Cursos
                 </button>
               </div>
 
@@ -520,6 +515,7 @@ export default function StudentList() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50 text-slate-400 text-xs font-bold">
+                    <th className="px-4 py-4 font-bold tracking-wider uppercase text-center w-10">#</th>
                     <th className="px-6 py-4 font-bold tracking-wider uppercase">Nombre</th>
                     <th className="px-6 py-4 font-bold tracking-wider uppercase">Email</th>
                     <th className="px-6 py-4 font-bold tracking-wider uppercase">Curso Actual</th>
@@ -533,13 +529,13 @@ export default function StudentList() {
                 <tbody className="divide-y divide-slate-100 text-sm">
                   {isLoading && allStudents.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="px-6 py-10 text-center text-slate-400 font-medium">
+                      <td colSpan="9" className="px-6 py-10 text-center text-slate-400 font-medium">
                         Cargando base de datos de estudiantes...
                       </td>
                     </tr>
                   ) : students.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="px-6 py-12 text-center text-slate-400 font-medium">
+                      <td colSpan="9" className="px-6 py-12 text-center text-slate-400 font-medium">
                         {search || statusFilter || courseFilter ? (
                           "No se encontraron alumnos con los filtros seleccionados"
                         ) : (
@@ -565,7 +561,7 @@ export default function StudentList() {
                       </td>
                     </tr>
                   ) : (
-                    students.map((student) => {
+                    students.map((student, index) => {
                       // Formatear fecha próximo pago
                       let formattedDate = student.next_payment;
                       if (student.next_payment && !isNaN(Date.parse(student.next_payment))) {
@@ -591,16 +587,19 @@ export default function StudentList() {
                           key={student.id} 
                           className="hover:bg-slate-50/50 transition-all duration-150 group"
                         >
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-4 py-4 text-slate-400 font-semibold text-xs text-center">
+                            {index + 1}
+                          </td>
+                          <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-full bg-ttp-primary/10 text-ttp-primary font-bold flex items-center justify-center flex-shrink-0 text-sm">
                                 {student.name.charAt(0)}
                               </div>
                               <Link 
                                 href={`/students/${student.id}`} 
-                                className="font-semibold text-slate-800 hover:text-ttp-primary hover:underline transition-colors"
+                                className="text-xs md:text-sm font-semibold text-slate-800 hover:text-ttp-primary hover:underline transition-colors break-words whitespace-normal leading-tight block max-w-[180px]"
                               >
-                                {student.name}
+                                {student.name} {student.last_name || ""}
                               </Link>
                             </div>
                           </td>
@@ -609,7 +608,7 @@ export default function StudentList() {
                           <td className="px-6 py-4 text-slate-500 font-medium">{student.teacher}</td>
                           <td className="px-6 py-4 text-slate-500 font-medium">{formattedEnrolledDate}</td>
                           <td className="px-6 py-4 text-slate-700 font-medium">{formattedDate}</td>
-                           <td className="px-6 py-4">
+                          <td className="px-6 py-4">
                             <span className={`px-3 py-1 rounded-full text-[11px] font-bold border whitespace-nowrap ${
                               student.status === "active" 
                                 ? "bg-teal-50 text-teal-600 border-teal-150" 

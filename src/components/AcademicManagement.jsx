@@ -2,15 +2,228 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import { useData } from "@/context/DataContext";
 
 
 // ── UI constants ────────────────────────────────────────────────────────────────
-const CT_LABEL = { grupal: "Grupal", privada: "Privada", conversation_club: "Conv. Club" };
+const CT_LABEL = { grupal: "Grupal", privada: "Privada", conversation_club: "Conv. Club", sin_asignar: "Sin Asignar" };
 const CT_COLOR = {
   grupal:            "bg-sky-50 border-sky-200 text-sky-700",
   privada:           "bg-violet-50 border-violet-200 text-violet-700",
   conversation_club: "bg-teal-50 border-teal-200 text-teal-700",
+  sin_asignar:       "bg-slate-50 border-slate-200 text-slate-500",
 };
+
+function CustomTimePicker({ label, value, onChange }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hour, setHour] = useState(12);
+  const [minute, setMinute] = useState(0);
+  const [period, setPeriod] = useState("a. m.");
+
+  const [hourInput, setHourInput] = useState("12");
+  const [minInput, setMinInput] = useState("00");
+
+  useEffect(() => {
+    if (value && !isOpen) {
+      const parts = value.split(" ");
+      const timePart = parts[0];
+      const periodPart = parts.slice(1).join(" ").toLowerCase();
+
+      let [h, m] = timePart.split(":").map(Number);
+      if (isNaN(h)) h = 12;
+      if (isNaN(m)) m = 0;
+
+      let p = "a. m.";
+      if (periodPart.includes("p") || h > 12) {
+        p = "p. m.";
+      }
+
+      let displayHour = h;
+      if (h > 12) {
+        displayHour = h - 12;
+      } else if (h === 0) {
+        displayHour = 12;
+      }
+
+      setHour(displayHour);
+      setMinute(m);
+      setHourInput(String(displayHour).padStart(2, "0"));
+      setMinInput(String(m).padStart(2, "0"));
+      setPeriod(p);
+    }
+  }, [value, isOpen]);
+
+  const updateTime = (newH, newM, newP) => {
+    const formatted = `${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")} ${newP}`;
+    onChange(formatted);
+  };
+
+  const adjustHour = (amount) => {
+    let next = hour + amount;
+    if (next > 12) next = 1;
+    if (next < 1) next = 12;
+    setHour(next);
+    setHourInput(String(next).padStart(2, "0"));
+    updateTime(next, minute, period);
+  };
+
+  const adjustMinute = (amount) => {
+    let next = minute + amount;
+    if (next > 59) next = 0;
+    if (next < 0) next = 59;
+    setMinute(next);
+    setMinInput(String(next).padStart(2, "0"));
+    updateTime(hour, next, period);
+  };
+
+  const handleHourChange = (valStr) => {
+    const clean = valStr.replace(/\D/g, "");
+    setHourInput(clean);
+    if (clean) {
+      let num = parseInt(clean, 10);
+      if (num >= 0 && num <= 23) {
+        let displayH = num;
+        let p = period;
+        if (num > 12) {
+          displayH = num - 12;
+          p = "p. m.";
+        } else if (num === 0) {
+          displayH = 12;
+          p = "a. m.";
+        }
+        setHour(displayH);
+        setPeriod(p);
+        updateTime(displayH, minute, p);
+      }
+    }
+  };
+
+  const handleHourBlur = () => {
+    let num = parseInt(hourInput, 10);
+    if (isNaN(num) || num < 0 || num > 23) {
+      num = 12;
+    }
+    let displayH = num;
+    let p = period;
+    if (num > 12) {
+      displayH = num - 12;
+      p = "p. m.";
+    } else if (num === 0) {
+      displayH = 12;
+      p = "a. m.";
+    }
+    setHour(displayH);
+    setPeriod(p);
+    setHourInput(String(displayH).padStart(2, "0"));
+    updateTime(displayH, minute, p);
+  };
+
+  const handleMinChange = (valStr) => {
+    const clean = valStr.replace(/\D/g, "");
+    setMinInput(clean);
+    if (clean) {
+      let num = parseInt(clean, 10);
+      if (num >= 0 && num <= 59) {
+        setMinute(num);
+        updateTime(hour, num, period);
+      }
+    }
+  };
+
+  const handleMinBlur = () => {
+    let num = parseInt(minInput, 10);
+    if (isNaN(num) || num < 0 || num > 59) num = 0;
+    setMinute(num);
+    setMinInput(String(num).padStart(2, "0"));
+    updateTime(hour, num, period);
+  };
+
+  const togglePeriod = (p) => {
+    setPeriod(p);
+    updateTime(hour, minute, p);
+  };
+
+  return (
+    <div className="relative">
+      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</label>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between px-3 py-2 border border-slate-200 rounded-xl text-sm font-semibold bg-white hover:bg-slate-50 transition-colors"
+      >
+        <span>{value || "12:00 a. m."}</span>
+        <span className="material-symbols-outlined text-slate-400 text-base">edit</span>
+      </button>
+
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute left-1/2 -translate-x-1/2 mt-2 bg-white border border-slate-150 rounded-2xl p-4 shadow-xl z-50 flex flex-col items-center min-w-[210px]">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-center">
+                <button type="button" onClick={() => adjustHour(1)} className="p-0.5 hover:bg-slate-100 rounded-lg transition-colors flex items-center justify-center">
+                  <span className="material-symbols-outlined text-slate-600 text-sm font-bold">keyboard_arrow_up</span>
+                </button>
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={hourInput}
+                  onChange={(e) => handleHourChange(e.target.value)}
+                  onBlur={handleHourBlur}
+                  className="w-10 h-10 border border-slate-200 rounded-xl font-montserrat text-base font-bold text-slate-800 bg-slate-50/50 text-center focus:outline-none focus:ring-1 focus:ring-slate-350"
+                />
+                <button type="button" onClick={() => adjustHour(-1)} className="p-0.5 hover:bg-slate-100 rounded-lg transition-colors flex items-center justify-center">
+                  <span className="material-symbols-outlined text-slate-600 text-sm font-bold">keyboard_arrow_down</span>
+                </button>
+              </div>
+              <span className="text-lg font-bold text-slate-400 mt-1.5">:</span>
+              <div className="flex flex-col items-center">
+                <button type="button" onClick={() => adjustMinute(5)} className="p-0.5 hover:bg-slate-100 rounded-lg transition-colors flex items-center justify-center">
+                  <span className="material-symbols-outlined text-slate-600 text-sm font-bold">keyboard_arrow_up</span>
+                </button>
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={minInput}
+                  onChange={(e) => handleMinChange(e.target.value)}
+                  onBlur={handleMinBlur}
+                  className="w-10 h-10 border border-slate-200 rounded-xl font-montserrat text-base font-bold text-slate-800 bg-slate-50/50 text-center focus:outline-none focus:ring-1 focus:ring-slate-350"
+                />
+                <button type="button" onClick={() => adjustMinute(-5)} className="p-0.5 hover:bg-slate-100 rounded-lg transition-colors flex items-center justify-center">
+                  <span className="material-symbols-outlined text-slate-600 text-sm font-bold">keyboard_arrow_down</span>
+                </button>
+              </div>
+              <div className="flex flex-col gap-1 self-center ml-2 border-l border-slate-100 pl-3">
+                <button
+                  type="button"
+                  onClick={() => togglePeriod("a. m.")}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border ${
+                    period === "a. m." 
+                      ? "bg-slate-800 border-slate-800 text-white shadow-sm" 
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  a. m.
+                </button>
+                <button
+                  type="button"
+                  onClick={() => togglePeriod("p. m.")}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border ${
+                    period === "p. m." 
+                      ? "bg-slate-800 border-slate-800 text-white shadow-sm" 
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  p. m.
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 const ST_COLOR = {
   active:    "bg-teal-50 border-teal-200 text-teal-600",
   moroso:    "bg-amber-50 border-amber-200 text-amber-600",
@@ -49,12 +262,35 @@ function hasConflict(a, b) {
 // ── Component ────────────────────────────────────────────────────────────────────
 export default function AcademicManagement({ showToast }) {
   const [activeTab, setActiveTab]   = useState("resumen");
-  const [students,  setStudents]    = useState([]);
-  const [teachers,  setTeachers]    = useState([]);
+  const { 
+    students, 
+    setStudents, 
+    teachers, 
+    groups: rawGroups, 
+    setGroups,
+    courses,
+    schedules,
+    refreshStudents 
+  } = useData();
+
   const [movements, setMovements]   = useState([]);
-  const [groups,    setGroups]      = useState([]);
   const [unavail,   setUnavail]     = useState([]);
   const [settleConfirmModal, setSettleConfirmModal] = useState(null); // { teacherId: '', teacherName: '', onConfirm: fn }
+
+  // Derive groups from rawGroups by matching teacher names and course details
+  const groups = useMemo(() => {
+    if (!rawGroups) return [];
+    return rawGroups.map(g => {
+      const matchCourse = courses?.find(c => c.name === g.course);
+      return {
+        ...g,
+        title: g.title || g.code || "",
+        level: g.level || g.course || "",
+        class_type: g.class_type || matchCourse?.class_type || "grupal",
+        teacher: teachers.find(t => t.id === g.teacher_id)?.name || g.teacher || "",
+      };
+    });
+  }, [rawGroups, teachers, courses]);
 
   // Cursos tab
   const [courseTypeFilter, setCourseTypeFilter] = useState("all");
@@ -70,34 +306,53 @@ export default function AcademicManagement({ showToast }) {
   const [asgn, setAsgn] = useState({ open: false, group: null, search: "", pendingStudent: null, conflictInfo: null });
 
   // New-group modal
-  const [ngModal, setNgModal] = useState({ open: false, title: "", level: "Intermediate", class_type: "grupal", teacher: "", schedule: "", capacity: 15 });
+  const [ngModal, setNgModal] = useState({ 
+    open: false, 
+    title: "", 
+    level: "Intermediate", 
+    class_type: "grupal", 
+    teacher: "", 
+    schedule: "", 
+    capacity: 15,
+    selectedDays: [],
+    startTime: "08:00 a. m.",
+    endTime: "09:30 a. m."
+  });
 
+  const uniqueSchedules = useMemo(() => {
+    if (!schedules) return [];
+    const seen = new Set();
+    const list = [];
+    schedules.forEach(s => {
+      const days = Array.isArray(s.daysSelected) ? s.daysSelected.join(", ") : (s.day || "");
+      const timeRange = s.time || `${s.startTime || ""} - ${s.endTime || ""}`;
+      const formatted = `${days} · ${timeRange}`.trim();
+      if (formatted && formatted !== "·" && !seen.has(formatted)) {
+        seen.add(formatted);
+        list.push(formatted);
+      }
+    });
+    // Add default fallbacks to ensure options are available
+    const defaults = [
+      "Lunes y Miércoles 17:00–18:30",
+      "Lunes y Miércoles 18:00–19:30",
+      "Martes y Jueves 09:00–10:00",
+      "Viernes 19:00–20:30",
+      "Lunes, Miércoles y Viernes 16:00–17:00"
+    ];
+    defaults.forEach(d => {
+      if (!seen.has(d)) {
+        list.push(d);
+      }
+    });
+    return list;
+  }, [schedules]);
+
+  // Sync databases if they are loaded empty on mount
   useEffect(() => {
-    const loadAll = async () => {
-      const [{ data: studentsData }, { data: teachersData }, { data: groupsData }] = await Promise.all([
-        supabase.from("students").select("*"),
-        supabase.from("teachers").select("*"),
-        supabase.from("groups").select("*"),
-      ]);
-      if (studentsData) setStudents(studentsData);
-      if (teachersData) {
-        const mapped = teachersData.map(t => ({
-          ...t,
-          status: t.status === "active" ? "activo" : t.status,
-        }));
-        setTeachers(mapped);
-      }
-      if (groupsData && teachersData) {
-        const resolved = groupsData.map(g => ({
-          ...g,
-          teacher: teachersData.find(t => t.id === g.teacher_id)?.name || g.teacher || "",
-        }));
-        setGroups(resolved);
-      } else if (groupsData) {
-        setGroups(groupsData);
-      }
-    };
-    loadAll();
+    if (students.length === 0) {
+      refreshStudents();
+    }
   }, []);
 
   // ── Derived ──────────────────────────────────────────────────────────────────
@@ -114,11 +369,23 @@ export default function AcademicManagement({ showToast }) {
   const byCourse  = useMemo(() => {
     const m = {};
     students.forEach(s => {
-      const key = s.current_course || s.current_group;
-      if (key) (m[key] = m[key] || []).push(s);
+      // Add student to their primary group and course keys
+      if (s.current_group) {
+        (m[s.current_group] = m[s.current_group] || []).push(s);
+      }
+      if (s.current_course && s.current_course !== s.current_group) {
+        (m[s.current_course] = m[s.current_course] || []).push(s);
+      }
+      // Add student to their enrollment group and course keys
       (s.enrollments || []).forEach(e => {
-        const ek = e.course || e.group;
-        if (ek && ek !== key) (m[ek] = m[ek] || []).push(s);
+        if (e.group) {
+          const alreadyInGroup = m[e.group]?.some(x => x.id === s.id);
+          if (!alreadyInGroup) (m[e.group] = m[e.group] || []).push(s);
+        }
+        if (e.course && e.course !== e.group) {
+          const alreadyInCourse = m[e.course]?.some(x => x.id === s.id);
+          if (!alreadyInCourse) (m[e.course] = m[e.course] || []).push(s);
+        }
       });
     });
     return m;
@@ -290,27 +557,92 @@ export default function AcademicManagement({ showToast }) {
       teacher_id: teacherObj ? teacherObj.id : null
     };
 
-    const updatedStudent = { ...student, enrollments: [...(student.enrollments || []), newEnroll] };
+    const updatedStudent = { 
+      ...student, 
+      current_course: group.course || group.title,
+      current_group: group.title,
+      teacher: group.teacher || "",
+      schedule: group.schedule || "",
+      class_type: group.class_type || "grupal",
+      group_id: group.id || null,
+      course_id: resolvedCourseId,
+      teacher_id: teacherObj ? teacherObj.id : null,
+      enrollments: [...(student.enrollments || []), newEnroll] 
+    };
+
     setStudents(prev => prev.map(s => s.id === student.id ? updatedStudent : s));
-    await supabase.from("students").update({ enrollments: updatedStudent.enrollments }).eq("id", student.id);
+
+    await supabase.from("students").update({ 
+      current_course: updatedStudent.current_course,
+      current_group: updatedStudent.current_group,
+      teacher: updatedStudent.teacher,
+      schedule: updatedStudent.schedule,
+      class_type: updatedStudent.class_type,
+      group_id: updatedStudent.group_id,
+      course_id: updatedStudent.course_id,
+      teacher_id: updatedStudent.teacher_id,
+      enrollments: updatedStudent.enrollments 
+    }).eq("id", student.id);
 
     const mv = { id: `mv-${Date.now()}`, date: new Date().toISOString().split("T")[0], time: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }), studentId: student.id, studentName: `${student.name} ${student.last_name || ""}`.trim(), changeType: "group", from: student.current_course || "—", to: group.title, affectsFinancials: false, syncStatus: { "Base de datos": true, "Horario": true, "Maestro": true, "Perfil alumno": true, "Finanzas": false, "Calendario": true } };
     setMovements(prev => [mv, ...prev]);
     setAsgn({ open: false, group: null, search: "", pendingStudent: null, conflictInfo: null });
     showToast?.(`✅ ${student.name} inscrito en "${group.title}"`);
-    syncAcademicChanges(updatedStudent, "group", group.title);
   };
 
   // ── Create group ─────────────────────────────────────────────────────────────
   const createGroup = async () => {
     if (!ngModal.title.trim() || !ngModal.teacher.trim()) { showToast?.("❌ Completa nombre y maestro"); return; }
+    
+    // Dynamic schedule construction
+    let formattedSchedule = "";
+    if (ngModal.selectedDays && ngModal.selectedDays.length > 0) {
+      const days = ngModal.selectedDays;
+      let daysStr = "";
+      if (days.length === 1) {
+        daysStr = days[0];
+      } else if (days.length === 2) {
+        daysStr = `${days[0]} y ${days[1]}`;
+      } else {
+        daysStr = `${days.slice(0, -1).join(", ")} y ${days[days.length - 1]}`;
+      }
+      formattedSchedule = `${daysStr} ${ngModal.startTime || "08:00 a. m."}–${ngModal.endTime || "09:30 a. m."}`;
+    }
+
     const teacher = teachers.find(t => t.name === ngModal.teacher.trim());
-    const ng = { title: ngModal.title.trim(), level: ngModal.level, class_type: ngModal.class_type, teacher_id: teacher?.id || null, schedule: ngModal.schedule.trim(), capacity: Number(ngModal.capacity) || 15 };
+    const ng = { 
+      code: ngModal.title.trim(), 
+      course: ngModal.level, 
+      teacher_id: teacher?.id || null, 
+      schedule: formattedSchedule.trim(), 
+      capacity: Number(ngModal.capacity) || 15 
+    };
     const { data, error } = await supabase.from("groups").insert([ng]).select().single();
-    if (error) { showToast?.("❌ Error al crear grupo"); return; }
-    setGroups(prev => [...prev, { ...data, teacher: ngModal.teacher.trim() }]);
-    setNgModal({ open: false, title: "", level: "Intermediate", class_type: "grupal", teacher: "", schedule: "", capacity: 15 });
-    showToast?.(`✅ Grupo "${ng.title}" creado`);
+    if (error) { 
+      console.error("Error creating group:", error);
+      showToast?.("❌ Error al crear curso"); 
+      return; 
+    }
+    setGroups(prev => [...prev, { 
+      ...data, 
+      title: data.code, 
+      level: data.course, 
+      class_type: ngModal.class_type || "grupal",
+      teacher: ngModal.teacher.trim() 
+    }]);
+    setNgModal({ 
+      open: false, 
+      title: "", 
+      level: "Intermediate", 
+      class_type: "grupal", 
+      teacher: "", 
+      schedule: "", 
+      capacity: 15,
+      selectedDays: [],
+      startTime: "08:00 a. m.",
+      endTime: "09:30 a. m."
+    });
+    showToast?.(`✅ Curso "${ng.code}" creado`);
   };
 
   const handleSettleTeacherHours = (teacherId) => {
@@ -339,8 +671,15 @@ export default function AcademicManagement({ showToast }) {
     const mvThisMonth  = movements.filter(m => m.date?.startsWith(thisMonth)).length;
     const loads        = teachers.filter(t => t.status === "active" || t.status === "activo").map(t => (byTeacher[t.name]?.length || 0) / (t.max_students || 20) * 100);
     const avgLoad      = loads.length ? Math.round(loads.reduce((a, b) => a + b, 0) / loads.length) : 0;
-    const byType       = { grupal: 0, privada: 0, conversation_club: 0 };
-    students.forEach(s => { if (s.class_type && byType[s.class_type] !== undefined) byType[s.class_type]++; });
+    const byType       = { grupal: 0, privada: 0, conversation_club: 0, sin_asignar: 0 };
+    students.forEach(s => {
+      const hasCourse = s.current_course || s.current_group || (s.enrollments && s.enrollments.length > 0);
+      if (!hasCourse) {
+        byType.sin_asignar++;
+      } else if (s.class_type && byType[s.class_type] !== undefined) {
+        byType[s.class_type]++;
+      }
+    });
 
     return (
       <div className="space-y-6">
@@ -557,7 +896,9 @@ export default function AcademicManagement({ showToast }) {
                             <div className="w-7 h-7 rounded-full bg-ttp-primary/10 text-ttp-primary font-bold flex items-center justify-center text-xs flex-shrink-0">{s.name.charAt(0)}</div>
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-slate-800 truncate">{s.name} {s.last_name || ""}</p>
-                              <p className="text-[10px] text-slate-400 truncate">{s.schedule || "Sin horario"} · {s.current_course || "—"}</p>
+                              <p className="text-[10px] text-slate-400 truncate">
+                                {s.schedule || s.enrollments?.[0]?.schedule || "Sin horario"} · {s.current_course || s.enrollments?.[0]?.course || "—"}
+                              </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
@@ -610,7 +951,7 @@ export default function AcademicManagement({ showToast }) {
             className="flex items-center gap-1.5 bg-ttp-primary text-white px-4 py-2 rounded-xl text-xs font-bold hover:opacity-90 active:scale-95 transition-all shadow-md shadow-pink-500/10"
           >
             <span className="material-symbols-outlined text-sm">add</span>
-            Nuevo Grupo
+            Nuevo Curso
           </button>
         </div>
 
@@ -723,112 +1064,7 @@ export default function AcademicManagement({ showToast }) {
     );
   };
 
-  // ── Tab: Horarios ─────────────────────────────────────────────────────────────
-  const TabHorarios = () => {
-    const toggleUnavail = (sched) => {
-      const upd = unavail.includes(sched) ? unavail.filter(s => s !== sched) : [...unavail, sched];
-      setUnavail(upd);
-    };
 
-    // Combine schedules from students + groups for a complete view
-    const allGroupScheds = groups.map(g => g.schedule).filter(Boolean);
-    const combined = [...new Set([...allScheds, ...allGroupScheds])];
-
-    const schedInfo = (sched) => {
-      const studentsIn = students.filter(s => s.schedule === sched);
-      const groupsIn   = groups.filter(g => g.schedule === sched);
-      const teacher    = studentsIn[0]?.teacher || groupsIn[0]?.teacher || "—";
-      const classType  = studentsIn[0]?.class_type || groupsIn[0]?.class_type || "grupal";
-      return { studentsIn, groupsIn, teacher, classType };
-    };
-
-    return (
-      <div className="space-y-4">
-        <div className="flex gap-2 bg-slate-100 p-1 rounded-xl w-fit">
-          {[{ id: "en_uso", label: "En Uso" }, { id: "no_disponibles", label: "Deshabilitados" }].map(v => (
-            <button key={v.id} onClick={() => setScheduleView(v.id)}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${scheduleView === v.id ? "bg-white text-ttp-primary shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
-              {v.label}
-            </button>
-          ))}
-        </div>
-
-        {scheduleView === "en_uso" ? (
-          <div className="space-y-3">
-            {combined.length === 0
-              ? <p className="text-center text-slate-400 py-12 text-sm">No hay horarios registrados</p>
-              : combined.map(sched => {
-                  const { studentsIn, groupsIn, teacher, classType } = schedInfo(sched);
-                  const isOff = unavail.includes(sched);
-                  return (
-                    <div key={sched} className={`bg-white border rounded-2xl p-5 transition-all ${isOff ? "opacity-50 border-rose-200 bg-rose-50/30" : "border-slate-200/60"}`}>
-                      <div className="flex items-start justify-between gap-4 flex-wrap">
-                        <div className="flex items-start gap-3 min-w-0 flex-1">
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 border ${isOff ? "bg-rose-50 border-rose-200" : "bg-sky-50 border-sky-200"}`}>
-                            <span className={`material-symbols-outlined text-lg ${isOff ? "text-rose-400" : "text-sky-600"}`}>{isOff ? "event_busy" : "schedule"}</span>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-bold text-slate-800 text-sm">{sched}</p>
-                            <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                              <span className="material-symbols-outlined text-[11px]">person_4</span>{teacher}
-                            </p>
-                            {groupsIn.length > 0 && (
-                              <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                                <span className="material-symbols-outlined text-[11px]">school</span>
-                                {groupsIn.map(g => g.title).join(", ")}
-                              </p>
-                            )}
-                            {studentsIn.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1.5">
-                                {studentsIn.map(s => (
-                                  <span key={s.id} className="text-[9px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md">
-                                    {s.name} {s.last_name || ""}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${CT_COLOR[classType]}`}>{CT_LABEL[classType]}</span>
-                          <span className="text-[10px] font-bold text-slate-400">{studentsIn.length} alumno{studentsIn.length !== 1 ? "s" : ""}</span>
-                          <button
-                            onClick={() => toggleUnavail(sched)}
-                            className={`text-[10px] font-bold px-3 py-1.5 rounded-xl border transition-colors whitespace-nowrap ${isOff ? "bg-teal-50 border-teal-200 text-teal-600 hover:bg-teal-100" : "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"}`}
-                          >
-                            {isOff ? "Habilitar" : "Deshabilitar"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-            }
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {unavail.length === 0
-              ? <p className="text-center text-slate-400 py-12 text-sm">No hay horarios deshabilitados</p>
-              : unavail.map(sched => (
-                  <div key={sched} className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="material-symbols-outlined text-rose-400 text-xl">event_busy</span>
-                      <p className="font-semibold text-slate-700 text-sm">{sched}</p>
-                    </div>
-                    <button
-                      onClick={() => { const upd = unavail.filter(s => s !== sched); setUnavail(upd); }}
-                      className="text-[11px] font-bold text-teal-600 border border-teal-200 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-xl transition-colors whitespace-nowrap"
-                    >
-                      Volver a habilitar
-                    </button>
-                  </div>
-                ))
-            }
-          </div>
-        )}
-      </div>
-    );
-  };
 
   // ── Tab: Movimientos ──────────────────────────────────────────────────────────
   const TabMovimientos = () => (
@@ -1190,7 +1426,7 @@ export default function AcademicManagement({ showToast }) {
                               {enrollments.map((e, i) => (
                                 <span key={i} className="text-[9px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
                                   <span className="material-symbols-outlined text-[9px]">circle</span>
-                                  {e.course || e.group}
+                                  {e.group || e.course}
                                 </span>
                               ))}
                               {enrollments.length === 0 && <span className="text-[10px] text-slate-400">Sin clases asignadas</span>}
@@ -1246,12 +1482,15 @@ export default function AcademicManagement({ showToast }) {
   const NewGroupModal = () => {
     if (!ngModal.open) return null;
     return (
-      <div className="modal-backdrop fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div 
+        onClick={(e) => { if (e.target === e.currentTarget) setNgModal(p => ({ ...p, open: false })); }}
+        className="modal-backdrop fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      >
         <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-100 modal-card">
           <div className="p-5 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
             <p className="font-montserrat font-bold text-slate-800 text-sm flex items-center gap-2">
               <span className="material-symbols-outlined text-ttp-primary">add_circle</span>
-              Crear Nuevo Grupo
+              Crear Nuevo Curso
             </p>
             <button onClick={() => setNgModal(p => ({ ...p, open: false }))}
               className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-200/50 rounded-full transition-colors">
@@ -1261,7 +1500,7 @@ export default function AcademicManagement({ showToast }) {
           <div className="p-5 space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nombre del Grupo *</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nombre del Curso *</label>
                 <input value={ngModal.title} onChange={e => setNgModal(p => ({ ...p, title: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ttp-primary/10 focus:border-ttp-primary"
                   placeholder="Ej. English B2 Avanzado" />
@@ -1289,11 +1528,44 @@ export default function AcademicManagement({ showToast }) {
                   {teachers.filter(t => t.status === "active" || t.status === "activo").map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                 </select>
               </div>
-              <div className="col-span-2">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Horario</label>
-                <input value={ngModal.schedule} onChange={e => setNgModal(p => ({ ...p, schedule: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ttp-primary/10 focus:border-ttp-primary"
-                  placeholder="Ej. Lunes y Miércoles 18:00–19:30" />
+              <div className="col-span-2 space-y-2">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Días del Curso</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"].map(day => {
+                    const isSelected = (ngModal.selectedDays || []).includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          const upd = isSelected 
+                            ? ngModal.selectedDays.filter(d => d !== day) 
+                            : [...(ngModal.selectedDays || []), day];
+                          setNgModal(p => ({ ...p, selectedDays: upd }));
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                          isSelected 
+                            ? "bg-ttp-primary border-ttp-primary text-white shadow-sm" 
+                            : "border-slate-200 text-slate-650 hover:bg-slate-50"
+                        }`}
+                      >
+                        {day.substring(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <CustomTimePicker 
+                  label="Hora Inicio" 
+                  value={ngModal.startTime || "08:00"} 
+                  onChange={val => setNgModal(p => ({ ...p, startTime: val }))} 
+                />
+                <CustomTimePicker 
+                  label="Hora Fin" 
+                  value={ngModal.endTime || "09:30"} 
+                  onChange={val => setNgModal(p => ({ ...p, endTime: val }))} 
+                />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Capacidad</label>
@@ -1305,7 +1577,7 @@ export default function AcademicManagement({ showToast }) {
               <button onClick={() => setNgModal(p => ({ ...p, open: false }))}
                 className="px-5 py-2 rounded-xl text-slate-500 hover:bg-slate-50 font-semibold text-sm transition-all">Cancelar</button>
               <button onClick={createGroup}
-                className="px-5 py-2 rounded-xl bg-ttp-primary text-white font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-md">Crear Grupo</button>
+                className="px-5 py-2 rounded-xl bg-ttp-primary text-white font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-md">Crear Curso</button>
             </div>
           </div>
         </div>
@@ -1319,8 +1591,7 @@ export default function AcademicManagement({ showToast }) {
   const tabs = [
     { id: "resumen",     label: "Resumen",        icon: "dashboard"   },
     { id: "maestros",    label: "Maestros",        icon: "person_4"    },
-    { id: "cursos",      label: "Cursos & Grupos", icon: "school"      },
-    { id: "horarios",    label: "Horarios",        icon: "schedule"    },
+    { id: "cursos",      label: "Cursos",          icon: "school"      },
     { id: "movimientos", label: "Movimientos",     icon: "swap_horiz"  },
   ];
 
@@ -1343,7 +1614,6 @@ export default function AcademicManagement({ showToast }) {
       {activeTab === "resumen"     && <TabResumen />}
       {activeTab === "maestros"    && <TabMaestros />}
       {activeTab === "cursos"      && <TabCursos />}
-      {activeTab === "horarios"    && <TabHorarios />}
       {activeTab === "movimientos" && <TabMovimientos />}
 
       {/* Modals */}
